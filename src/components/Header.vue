@@ -22,9 +22,33 @@
 </template>
 
 <script setup>
+import { watch, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 
-const { profile, isAuthenticated, isTeacher, logout } = useAuth()
+const router = useRouter()
+const { profile, isAuthenticated, isTeacher, logout, loadProfile, token } = useAuth()
+
+// Загружаем профиль при монтировании, если есть токен
+onMounted(async () => {
+  if (token.value && !profile.value) {
+    await loadProfile()
+  }
+})
+
+// Следим за изменениями маршрута и обновляем профиль
+watch(() => router.currentRoute.value.path, async () => {
+  if (token.value && !profile.value) {
+    await loadProfile()
+  }
+})
+
+// Следим за изменениями токена и isAuthenticated
+watch([token, isAuthenticated], async ([newToken, isAuth]) => {
+  if (newToken && isAuth && !profile.value) {
+    await loadProfile()
+  }
+}, { immediate: false })
 
 function handleLogout() {
   logout()

@@ -13,26 +13,26 @@
     </div>
     <nav class="tree-nav">
       <div
-        v-for="lecture in lectures"
-        :key="lecture.key"
-        class="tree-item"
+        v-for="topic in topics"
+        :key="topic.key"
+        class="tree-topic"
       >
         <div
-          :class="['tree-lecture', activeLectureKey === lecture.key && 'active']"
-          @click="$emit('select-lecture', lecture)"
+          :class="['topic-header', expandedTopics[topic.key] && 'expanded']"
+          @click="toggleTopic(topic.key)"
         >
-          <span class="lecture-icon">📖</span>
-          <span class="lecture-title">{{ lectureTitle(lecture.key) }}</span>
+          <span class="topic-icon">{{ expandedTopics[topic.key] ? '📂' : '📁' }}</span>
+          <span class="topic-title">{{ topic.title }}</span>
         </div>
-        <div v-if="lecture.tasks && lecture.tasks.length" class="tree-tasks">
+        <div v-if="expandedTopics[topic.key]" class="topic-content">
           <div
-            v-for="task in lecture.tasks"
-            :key="task.key"
-            :class="['tree-task', getTaskStatus(lecture.key, task.key)]"
-            @click="$emit('select-task', lecture, task)"
+            v-for="lecture in topic.lectures"
+            :key="lecture.key"
+            :class="['tree-lecture', activeLectureKey === lecture.key && 'active']"
+            @click="$emit('select-lecture', topic, lecture)"
           >
-            <span class="task-icon">{{ getTaskIcon(lecture.key, task.key) }}</span>
-            <span class="task-key">{{ task.key }}</span>
+            <span class="lecture-icon">📖</span>
+            <span class="lecture-title">{{ lecture.title }}</span>
           </div>
         </div>
       </div>
@@ -41,13 +41,14 @@
 </template>
 
 <script setup>
+import { reactive, onMounted } from 'vue'
 
 const props = defineProps({
   courseTitle: {
     type: String,
     required: true
   },
-  lectures: {
+  topics: {
     type: Array,
     required: true
   },
@@ -69,32 +70,27 @@ const props = defineProps({
   }
 })
 
-defineEmits(['select-lecture', 'select-task', 'start-edit'])
+defineEmits(['select-lecture', 'start-edit'])
 
-function lectureTitle(key) {
-  const num = key.replace(/[^\d]/g, '')
-  return num ? `Лекция ${num}` : key
+// Убираем задачи из дерева - показываем только лекции
+
+const expandedTopics = reactive({})
+
+function toggleTopic(topicKey) {
+  expandedTopics[topicKey] = !expandedTopics[topicKey]
 }
 
-function getTaskStatus(lectureKey, taskKey) {
-  const taskId = `${lectureKey}.${taskKey}`
-  const status = props.completedTasks[taskId]
-  if (status === 'completed') return 'completed'
-  if (status === 'in-progress') return 'in-progress'
-  return 'not-started'
-}
-
-function getTaskIcon(lectureKey, taskKey) {
-  const status = getTaskStatus(lectureKey, taskKey)
-  if (status === 'completed') return '✅'
-  if (status === 'in-progress') return '🔄'
-  return '⭕'
-}
+// Раскрываем все темы по умолчанию
+onMounted(() => {
+  props.topics.forEach(topic => {
+    expandedTopics[topic.key] = true
+  })
+})
 </script>
 
 <style scoped>
 .course-tree {
-  width: 280px;
+  width: 320px;
   background: white;
   border-radius: 8px;
   border: 1px solid #e5e7eb;
@@ -102,6 +98,8 @@ function getTaskIcon(lectureKey, taskKey) {
   height: fit-content;
   position: sticky;
   top: 24px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
 }
 
 .tree-header {
@@ -139,10 +137,48 @@ function getTaskIcon(lectureKey, taskKey) {
 .tree-nav {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
 
-.tree-item {
+.tree-topic {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 8px;
+}
+
+.topic-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 700;
+  color: #1e40af;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+}
+
+.topic-header:hover {
+  background: #dbeafe;
+}
+
+.topic-header.expanded {
+  background: #dbeafe;
+}
+
+.topic-icon {
+  font-size: 18px;
+}
+
+.topic-title {
+  font-size: 15px;
+}
+
+.topic-content {
+  margin-top: 4px;
+  padding-left: 8px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -158,6 +194,7 @@ function getTaskIcon(lectureKey, taskKey) {
   transition: all 0.2s;
   font-weight: 600;
   color: #374151;
+  margin-left: 8px;
 }
 
 .tree-lecture:hover {
@@ -176,46 +213,4 @@ function getTaskIcon(lectureKey, taskKey) {
 .lecture-title {
   font-size: 14px;
 }
-
-.tree-tasks {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-left: 32px;
-  padding-left: 12px;
-  border-left: 2px solid #e5e7eb;
-}
-
-.tree-task {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-size: 13px;
-  color: #6b7280;
-}
-
-.tree-task:hover {
-  background: #f9fafb;
-}
-
-.tree-task.completed {
-  color: #059669;
-}
-
-.tree-task.in-progress {
-  color: #2563eb;
-}
-
-.task-icon {
-  font-size: 14px;
-}
-
-.task-key {
-  font-weight: 500;
-}
 </style>
-

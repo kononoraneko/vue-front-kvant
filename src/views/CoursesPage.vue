@@ -64,7 +64,10 @@
             v-for="course in createdCourses"
             :key="'c-' + course.id"
             :course="course"
+            :show-edit="true"
+            :is-creator="true"
             @click="openCourse(course)"
+            @edit="editCourse(course)"
           />
         </div>
       </section>
@@ -102,6 +105,11 @@ async function openCourse(course) {
 async function openCourseById() {
   if (!quickCourseId.value) return
   router.push(`/courses/${quickCourseId.value}`)
+}
+
+function editCourse(course) {
+  if (!course?.id) return
+  router.push(`/courses/${course.id}/edit`)
 }
 
 onMounted(async () => {

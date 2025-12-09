@@ -4,14 +4,19 @@ import { useApi } from './useApi'
 
 export function useAuth() {
   const router = useRouter()
-  const { apiJson, setError } = useApi()
+  const { apiJson } = useApi()
   
   const token = ref(localStorage.getItem('token') || '')
   const profile = ref(null)
   const loading = ref(false)
+  const error = ref('')
 
   const isAuthenticated = computed(() => !!token.value)
   const isTeacher = computed(() => profile.value?.role === 'Teacher')
+
+  function setError(message) {
+    error.value = message || ''
+  }
 
   function saveToken(newToken) {
     token.value = newToken
@@ -100,13 +105,15 @@ export function useAuth() {
     token,
     profile,
     loading,
+    error,
     isAuthenticated,
     isTeacher,
     login,
     register,
     logout,
     loadProfile,
-    loadCurrentUser
+    loadCurrentUser,
+    setError
   }
 }
 

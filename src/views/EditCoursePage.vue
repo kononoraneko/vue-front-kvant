@@ -1,17 +1,21 @@
 <template>
-  <div class="create-course-page">
+  <div class="edit-course-page">
     <div class="page-header">
-      <h2>Создать новый курс</h2>
+      <h2>Редактировать курс</h2>
       <button type="button" class="btn-secondary" @click="$router.push('/courses')">
         ← Назад к курсам
       </button>
     </div>
 
-    <div v-if="error" class="alert error">
+    <div v-if="loading" class="loading">
+      Загрузка курса...
+    </div>
+
+    <div v-else-if="error" class="alert error">
       {{ error }}
     </div>
 
-    <form @submit.prevent="handleSubmit" class="course-form">
+    <form v-else @submit.prevent="handleSubmit" class="course-form">
       <div class="form-section">
         <label>
           Название курса *
@@ -150,8 +154,11 @@
       </div>
 
       <div class="form-actions">
+        <button type="button" class="btn-secondary" @click="$router.push(`/courses/${courseId}`)">
+          Отмена
+        </button>
         <button type="submit" :disabled="loading || !canSubmit" class="btn-primary large">
-          {{ loading ? 'Создаём курс...' : 'Создать курс' }}
+          {{ loading ? 'Сохраняем...' : 'Сохранить изменения' }}
         </button>
       </div>
     </form>
@@ -159,33 +166,24 @@
 </template>
 
 <script setup>
-import { reactive, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { reactive, computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 import { useApi } from '../composables/useApi'
 import { marked } from 'marked'
 import TaskEditor from '../components/TaskEditor.vue'
 
+const route = useRoute()
 const router = useRouter()
 const { token, loadProfile } = useAuth()
 const { error, setError, loading, apiJson } = useApi()
 
+const courseId = computed(() => route.params.id)
+
 const form = reactive({
   title: '',
   status: 'draft',
-  topics: [
-    {
-      title: '',
-      lectures: [
-        {
-          title: '',
-          content: '',
-          mode: 'markdown',
-          tasks: [{ key: 'task1', html: '', type: 'manual' }]
-        }
-      ]
-    }
-  ]
+  topics: []
 })
 
 const canSubmit = computed(() => {
@@ -257,6 +255,95 @@ function removeTask(topicIndex, lectureIndex, taskIndex) {
   }
 }
 
+async function loadCourse() {
+  loading.value = true
+  setError('')
+  
+  try {
+    const data = await apiJson(`/courses/${courseId.value}/content`, {}, token.value)
+    
+    form.title = data.course.title
+    form.status = data.course.status
+    
+    // Преобразуем структуру курса в формат формы
+    // Поддерживаем старый формат (без тем) и новый формат (с темами)
+    if (data.content) {
+      const entries = Object.entries(data.content)
+      
+      // Проверяем, есть ли темы (новый формат)
+      const firstEntry = entries[0]
+      if (firstEntry && firstEntry[1] && firstEntry[1].lectures) {
+        // Новый формат: Topic -> Lectures -> Tasks
+        form.topics = entries.map(([key, value]) => {
+          const topic = {
+            title: value.title || `Тема ${key.replace(/[^\d]/g, '')}`,
+            lectures: []
+          }
+          
+          if (value.lectures) {
+            const lectureEntries = Object.entries(value.lectures)
+            topic.lectures = lectureEntries.map(([lectureKey, lectureValue]) => ({
+              title: lectureValue.title || `Лекция ${lectureKey.replace(/[^\d]/g, '')}`,
+              content: lectureValue.content || '',
+              mode: 'markdown',
+              tasks: lectureValue.tasks ? Object.entries(lectureValue.tasks).map(([taskKey, taskValue]) => ({
+                key: taskKey,
+                html: taskValue.html || '',
+                type: taskValue.type || 'manual',
+                options: taskValue.options || null,
+                correct_answer: taskValue.correct_answer || null,
+                placeholder: taskValue.placeholder || null
+              })) : [{ key: 'task1', html: '', type: 'manual' }]
+            }))
+          }
+          
+          if (topic.lectures.length === 0) {
+            topic.lectures.push({
+              title: '',
+              content: '',
+              mode: 'markdown',
+              tasks: [{ key: 'task1', html: '' }]
+            })
+          }
+          
+          return topic
+        })
+      } else {
+        // Старый формат: Lectures -> Tasks (без тем)
+        // Преобразуем в новый формат с одной темой
+        form.topics = [{
+          title: 'Основная тема',
+          lectures: entries.map(([key, value]) => ({
+            title: value.title || `Лекция ${key.replace(/[^\d]/g, '')}`,
+            content: value.content || '',
+            mode: 'markdown',
+            tasks: value.tasks ? Object.entries(value.tasks).map(([taskKey, taskValue]) => ({
+              key: taskKey,
+              html: taskValue.html || ''
+            })) : [{ key: 'task1', html: '' }]
+          }))
+        }]
+      }
+    }
+    
+    if (form.topics.length === 0) {
+      form.topics.push({
+        title: '',
+        lectures: [{
+          title: '',
+          content: '',
+          mode: 'markdown',
+          tasks: [{ key: 'task1', html: '' }]
+        }]
+      })
+    }
+  } catch (e) {
+    setError(e.message)
+  } finally {
+    loading.value = false
+  }
+}
+
 async function handleSubmit() {
   if (!canSubmit.value) {
     setError('Заполните все обязательные поля')
@@ -297,10 +384,10 @@ async function handleSubmit() {
             }
             // Для single_choice correct_answer должен быть индексом (0-based)
             if (task.type === 'single_choice') {
-              // Всегда сохраняем correct_answer, даже если он 0
+              // Всегда сохраняем correct_answer для single_choice
               if (task.correct_answer !== undefined && task.correct_answer !== null) {
                 const answerIndex = parseInt(task.correct_answer)
-                if (!isNaN(answerIndex) && answerIndex >= 0) {
+                if (!isNaN(answerIndex) && answerIndex >= 0 && task.options && answerIndex < task.options.length) {
                   taskData.correct_answer = answerIndex
                 } else if (task.options && task.options.length > 0) {
                   // Если индекс невалидный, используем первый вариант (0)
@@ -335,23 +422,27 @@ async function handleSubmit() {
       content: courseContent
     }
 
-    await apiJson('/courses', {
-      method: 'POST',
+    await apiJson(`/courses/${courseId.value}`, {
+      method: 'PUT',
       body: JSON.stringify(courseData)
     }, token.value)
 
     await loadProfile()
-    router.push('/courses')
+    router.push(`/courses/${courseId.value}`)
   } catch (e) {
     setError(e.message)
   } finally {
     loading.value = false
   }
 }
+
+onMounted(() => {
+  loadCourse()
+})
 </script>
 
 <style scoped>
-.create-course-page {
+.edit-course-page {
   max-width: 1400px;
   margin: 0 auto;
   padding: 24px;
@@ -369,6 +460,12 @@ async function handleSubmit() {
   font-size: 28px;
   font-weight: 700;
   color: #1f2328;
+}
+
+.loading {
+  text-align: center;
+  padding: 48px;
+  color: #6b7280;
 }
 
 .alert {
@@ -644,6 +741,7 @@ button:disabled {
 .form-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 12px;
   margin-top: 32px;
   padding-top: 24px;
   border-top: 1px solid #e5e7eb;

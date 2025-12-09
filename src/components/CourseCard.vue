@@ -1,12 +1,23 @@
 <template>
   <article
     :class="['course-card', selected && 'selected']"
-    @click="$emit('click')"
   >
-    <h3>{{ course.title }}</h3>
-    <div class="course-meta">
-      <span class="tag" :class="statusClass">{{ course.status }}</span>
-      <span v-if="course.creator_id" class="creator">ID создателя: {{ course.creator_id }}</span>
+    <div class="course-content" @click="$emit('click')">
+      <h3>{{ course.title }}</h3>
+      <div class="course-meta">
+        <span class="tag" :class="statusClass">{{ course.status }}</span>
+        <span v-if="course.creator_id" class="creator">ID создателя: {{ course.creator_id }}</span>
+      </div>
+    </div>
+    <div v-if="showEdit && isCreator" class="course-actions">
+      <button
+        type="button"
+        class="btn-edit-small"
+        @click.stop="$emit('edit')"
+        title="Редактировать курс"
+      >
+        ✏️ Редактировать
+      </button>
     </div>
   </article>
 </template>
@@ -22,8 +33,18 @@ const props = defineProps({
   selected: {
     type: Boolean,
     default: false
+  },
+  showEdit: {
+    type: Boolean,
+    default: false
+  },
+  isCreator: {
+    type: Boolean,
+    default: false
   }
 })
+
+defineEmits(['click', 'edit'])
 
 const statusClass = computed(() => {
   const status = props.course.status
@@ -38,10 +59,17 @@ const statusClass = computed(() => {
 .course-card {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  padding: 16px;
-  cursor: pointer;
   background: white;
   transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.course-content {
+  padding: 16px;
+  cursor: pointer;
+  flex: 1;
 }
 
 .course-card:hover {
@@ -52,6 +80,33 @@ const statusClass = computed(() => {
 .course-card.selected {
   border-color: #2563eb;
   background: #eff6ff;
+}
+
+.course-actions {
+  padding: 8px 16px;
+  border-top: 1px solid #e5e7eb;
+  background: #f9fafb;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.btn-edit-small {
+  padding: 6px 12px;
+  border: 1px solid #2563eb;
+  border-radius: 6px;
+  background: white;
+  color: #2563eb;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-edit-small:hover {
+  background: #eff6ff;
+  border-color: #1d4ed8;
+  color: #1d4ed8;
 }
 
 .course-card h3 {

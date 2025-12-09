@@ -1,6 +1,6 @@
 <template>
   <div class="app">
-    <Header v-if="isAuthenticated" />
+    <Header />
     <main class="main-content">
       <router-view />
     </main>
@@ -8,10 +8,7 @@
 </template>
 
 <script setup>
-import { useAuth } from './composables/useAuth'
 import Header from './components/Header.vue'
-
-const { isAuthenticated } = useAuth()
 </script>
 
 <style>

@@ -12,13 +12,12 @@
       <div class="course-body">
         <CourseTree
           :course-title="activeCourse.title"
-          :lectures="lectures"
+          :topics="topics"
           :active-lecture-key="activeLectureKey"
           :is-creator="isCreator"
           :is-editing="isEditing"
           :completed-tasks="completedTasks"
           @select-lecture="selectLecture"
-          @select-task="selectTask"
           @start-edit="startEditing"
         />
 
@@ -92,7 +91,10 @@
               <template v-else>
                 <article v-if="lectureHtml" class="lesson-text">
                   <div class="lesson-header">
-                    <h3>{{ currentLectureTitle }}</h3>
+                    <div>
+                      <div class="topic-badge">{{ currentTopicTitle }}</div>
+                      <h3>{{ currentLectureTitle }}</h3>
+                    </div>
                     <button
                       v-if="isCreator"
                       type="button"
@@ -107,16 +109,123 @@
 
                 <section v-if="tasks.length" class="tasks">
                   <h3>Задачи</h3>
-                  <TaskCard
+                  <div
                     v-for="task in tasks"
                     :key="task.key"
-                    :task="task"
-                    :model-value="answers[task.key] || ''"
-                    :is-completed="isTaskCompleted(activeLectureKey, task.key)"
-                    @update:model-value="updateAnswer(activeLectureKey, task.key, $event)"
-                    @complete="markTaskCompleted(activeLectureKey, task.key)"
-                  />
+                    class="task-block"
+                  >
+                    <TaskCard
+                      :task="task"
+                      :model-value="getAnswerForTask(task.key) || ''"
+                      :is-completed="isTaskGraded(task.key)"
+                      :submission="getSubmissionForTask(task.key)"
+                      :submitting="loading"
+                      @update:model-value="updateAnswer(currentTopicKey, activeLectureKey, task.key, $event)"
+                      @submit="submitTask(task)"
+                    />
+                  </div>
                 </section>
+
+                <div class="lecture-divider"></div>
+                
+                <section
+                  v-if="isCreator && reviewSubmissions.length"
+                  class="reviews"
+                >
+                  <div class="reviews-header">
+                    <h3>Проверка решений (текущая лекция)</h3>
+                    <button
+                      type="button"
+                      class="btn-secondary"
+                      @click="showSubmissionsModal = true"
+                    >
+                      📋 Открыть в отдельном окне
+                    </button>
+                  </div>
+                  <div
+                    v-for="sub in reviewSubmissions"
+                    :key="sub.id"
+                    class="review-card"
+                  >
+                    <div class="review-header">
+                      <div class="review-title">
+                        <span class="badge neutral">{{ getUserName(sub.user_id) }}</span>
+                        <span class="badge light">Задача: {{ sub.task_key }}</span>
+                      </div>
+                      <span
+                        v-if="submissionStatusLabel(sub.task_key)"
+                        class="badge"
+                        :class="submissionStatusClass(sub.task_key)"
+                      >
+                        {{ submissionStatusLabel(sub.task_key) }}
+                      </span>
+                      <span
+                        v-if="sub.grade !== null"
+                        class="grade-badge"
+                        :class="getGradeClass(sub.grade)"
+                      >
+                        {{ sub.grade }}/5
+                      </span>
+                    </div>
+                    <div class="review-answer">
+                      <strong>Ответ студента:</strong>
+                      <div class="answer-box">{{ sub.answer }}</div>
+                    </div>
+                    <div class="review-actions">
+                      <div class="review-input-group">
+                        <label>
+                          Оценка (1-5)
+                          <select
+                            v-model.number="sub.grade"
+                            class="grade-select"
+                          >
+                            <option :value="null">Не оценено</option>
+                            <option :value="1">1</option>
+                            <option :value="2">2</option>
+                            <option :value="3">3</option>
+                            <option :value="4">4</option>
+                            <option :value="5">5</option>
+                          </select>
+                        </label>
+                        <label>
+                          Комментарий преподавателя
+                          <textarea
+                            v-model="sub.teacher_comment"
+                            placeholder="Введите комментарий..."
+                            class="comment-textarea"
+                            rows="3"
+                          />
+                        </label>
+                      </div>
+                      <button
+                        type="button"
+                        class="btn-primary"
+                        :disabled="loading"
+                        @click="gradeSubmission(sub)"
+                      >
+                        {{ loading ? 'Сохранение...' : 'Сохранить оценку' }}
+                      </button>
+                    </div>
+                  </div>
+                </section>
+
+                <SubmissionsModal
+                  :is-open="showSubmissionsModal"
+                  :submissions="reviewSubmissions"
+                  :loading="submissionsLoading"
+                  @close="showSubmissionsModal = false"
+                  @grade="gradeSubmission"
+                />
+
+                <div class="lecture-end-sentinel"></div>
+                <div v-if="nextLecture" class="next-lecture">
+                  <div class="next-lecture-content">
+                    <p class="next-lecture-text">Вы завершили эту лекцию!</p>
+                    <button type="button" class="btn-primary" @click="goToNextLecture">
+                      → Перейти к следующей лекции: {{ nextLecture.title }}
+                    </button>
+                  </div>
+                </div>
               </template>
             </template>
           </template>
@@ -127,32 +236,40 @@
 </template>
 
 <script setup>
-import { ref, computed, reactive, watch } from 'vue'
+import { ref, computed, reactive, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 import { useApi } from '../composables/useApi'
 import { marked } from 'marked'
 import CourseTree from '../components/CourseTree.vue'
 import TaskCard from '../components/TaskCard.vue'
+import SubmissionsModal from '../components/SubmissionsModal.vue'
 
 const route = useRoute()
-const { token, profile } = useAuth()
+const { token, profile, loadProfile } = useAuth()
 const { error, setError, loading, apiJson } = useApi()
 
 const courseContent = ref(null)
 const activeCourse = ref(null)
+const activeTopicKey = ref(null)
 const activeLectureKey = ref(null)
 const activeTaskKey = ref(null)
 const lectureHtml = ref('')
 const tasks = ref([])
 const lectureLoading = ref(false)
-const answers = reactive({})
 const isEditing = ref(false)
 const editForm = reactive({
   lectureTitle: '',
   content: '',
   mode: 'markdown'
 })
+
+// Submissions
+const mySubmissions = ref([])
+const reviewSubmissions = ref([])
+const submissionsLoading = ref(false)
+const userNames = ref({}) // Кэш имен пользователей
+const showSubmissionsModal = ref(false)
 
 // Сохранение прогресса задач в localStorage
 const completedTasks = reactive(JSON.parse(localStorage.getItem('completedTasks') || '{}'))
@@ -162,49 +279,107 @@ const isCreator = computed(() => {
   return activeCourse.value?.creator_id === profile.value?.id
 })
 
-const lectures = computed(() => {
+// Преобразуем структуру курса в формат для отображения
+const topics = computed(() => {
   if (!courseContent.value?.content) return []
+  
   const entries = Object.entries(courseContent.value.content)
-  return entries.map(([key, value]) => {
-    const lecture = {
-      key,
-      ...(value || {})
-    }
-    // Преобразуем tasks в массив для удобства
-    if (lecture.tasks && typeof lecture.tasks === 'object' && !Array.isArray(lecture.tasks)) {
-      lecture.tasks = Object.entries(lecture.tasks).map(([taskKey, taskValue]) => ({
-        key: taskKey,
-        ...(taskValue || {})
-      }))
-    }
-    return lecture
-  })
+  
+  // Проверяем, есть ли темы (новый формат)
+  const firstEntry = entries[0]
+  if (firstEntry && firstEntry[1] && firstEntry[1].lectures) {
+    // Новый формат: Topic -> Lectures -> Tasks
+    return entries.map(([topicKey, topicValue]) => {
+      const topic = {
+        key: topicKey,
+        title: topicValue.title || `Тема ${topicKey.replace(/[^\d]/g, '')}`,
+        lectures: []
+      }
+      
+      if (topicValue.lectures) {
+        const lectureEntries = Object.entries(topicValue.lectures)
+        topic.lectures = lectureEntries.map(([lectureKey, lectureValue]) => {
+          const lecture = {
+            key: `${topicKey}.${lectureKey}`,
+            title: lectureValue.title || `Лекция ${lectureKey.replace(/[^\d]/g, '')}`,
+            content: lectureValue.content || '',
+            file_to_text: lectureValue.file_to_text || null,
+            tasks: []
+          }
+          
+          if (lectureValue.tasks) {
+            lecture.tasks = Object.entries(lectureValue.tasks).map(([taskKey, taskValue]) => ({
+              key: taskKey,
+              type: taskValue?.type || 'manual', // auto или manual
+              ...(taskValue || {})
+            }))
+          }
+          
+          return lecture
+        })
+      }
+      
+      return topic
+    })
+  } else {
+    // Старый формат: Lectures -> Tasks (без тем)
+    // Преобразуем в новый формат с одной темой
+    return [{
+      key: 'default',
+      title: 'Основная тема',
+      lectures: entries.map(([lectureKey, lectureValue]) => {
+        const lecture = {
+          key: `default.${lectureKey}`,
+          title: lectureValue.title || `Лекция ${lectureKey.replace(/[^\d]/g, '')}`,
+          content: lectureValue.content || '',
+          file_to_text: lectureValue.file_to_text || null,
+          Tasks: lectureValue.Tasks || null,
+          tasks: []
+        }
+        
+        if (lectureValue.tasks) {
+          lecture.tasks = Object.entries(lectureValue.tasks).map(([taskKey, taskValue]) => ({
+            key: taskKey,
+            type: taskValue?.type || 'manual', // auto или manual
+            ...(taskValue || {})
+          }))
+        }
+        
+        return lecture
+      })
+    }]
+  }
+})
+
+const currentTopicTitle = computed(() => {
+  if (!activeTopicKey.value) return ''
+  const topic = topics.value.find(t => t.key === activeTopicKey.value)
+  return topic?.title || ''
 })
 
 const currentLectureTitle = computed(() => {
   if (!activeLectureKey.value) return ''
-  const lecture = lectures.value.find(l => l.key === activeLectureKey.value)
-  return lecture?.title || `Лекция ${activeLectureKey.value.replace(/[^\d]/g, '')}`
+  const [topicKey, lectureKey] = activeLectureKey.value.split('.')
+  const topic = topics.value.find(t => t.key === topicKey)
+  if (!topic) return ''
+  const lecture = topic.lectures.find(l => l.key === activeLectureKey.value)
+  return lecture?.title || `Лекция ${lectureKey?.replace(/[^\d]/g, '') || ''}`
 })
 
-function getTaskId(lectureKey, taskKey) {
-  return `${lectureKey}.${taskKey}`
+function getTaskId(topicKey, lectureKey, taskKey) {
+  return `${topicKey}.${lectureKey}.${taskKey}`
 }
 
-function isTaskCompleted(lectureKey, taskKey) {
-  return completedTasks[getTaskId(lectureKey, taskKey)] === 'completed'
+function getAnswerForTask(taskKey) {
+  if (!activeTopicKey.value || !activeLectureKey.value) return ''
+  const taskId = getTaskId(activeTopicKey.value, activeLectureKey.value, taskKey)
+  return taskAnswers[taskId] || ''
 }
 
-function markTaskCompleted(lectureKey, taskKey) {
-  const taskId = getTaskId(lectureKey, taskKey)
-  completedTasks[taskId] = 'completed'
-  saveProgress()
-}
-
-function updateAnswer(lectureKey, taskKey, value) {
-  const taskId = getTaskId(lectureKey, taskKey)
+function updateAnswer(topicKey, lectureKey, taskKey, value) {
+  const taskId = getTaskId(topicKey, lectureKey, taskKey)
   taskAnswers[taskId] = value
-  if (value.trim()) {
+  if (value && (typeof value === 'string' ? value.trim() : value)) {
     if (completedTasks[taskId] !== 'completed') {
       completedTasks[taskId] = 'in-progress'
     }
@@ -227,15 +402,46 @@ async function loadCourse() {
   setError('')
   lectureHtml.value = ''
   tasks.value = []
+  activeTopicKey.value = null
   activeLectureKey.value = null
   isEditing.value = false
   
   try {
+    // Убеждаемся, что профиль загружен
+    if (!profile.value) {
+      await loadProfile()
+    }
+    
     const data = await apiJson(`/courses/${courseId}/content`, {}, token.value)
     courseContent.value = data
     activeCourse.value = data.course
     // Загружаем сохраненные ответы для этого курса
     loadSavedAnswers()
+    
+    // Ждем обновления computed свойств
+    await nextTick()
+    
+    // Если есть параметр edit=true в URL и пользователь создатель, открываем первую лекцию в режиме редактирования
+    if (route.query.edit === 'true') {
+      // Даем время на обновление всех computed свойств
+      await nextTick()
+      await new Promise(resolve => setTimeout(resolve, 300))
+      
+      // Проверяем еще раз после загрузки данных
+      const creatorCheck = activeCourse.value?.creator_id === profile.value?.id
+      const hasTopics = topics.value.length > 0
+      
+      if (creatorCheck && hasTopics) {
+        const firstTopic = topics.value[0]
+        if (firstTopic.lectures.length > 0) {
+          const firstLecture = firstTopic.lectures[0]
+          await selectLecture(firstTopic, firstLecture)
+          // Ждем загрузки контента лекции
+          await new Promise(resolve => setTimeout(resolve, 1000))
+          startEditing()
+        }
+      }
+    }
   } catch (e) {
     setError(e.message)
   } finally {
@@ -244,16 +450,8 @@ async function loadCourse() {
 }
 
 function loadSavedAnswers() {
-  if (!activeCourse.value) return
-  const courseId = activeCourse.value.id
-  const saved = JSON.parse(localStorage.getItem(`course_${courseId}_answers`) || '{}')
-  Object.assign(answers, saved)
-}
-
-function saveAnswers() {
-  if (!activeCourse.value) return
-  const courseId = activeCourse.value.id
-  localStorage.setItem(`course_${courseId}_answers`, JSON.stringify(answers))
+  // Ответы уже загружены из taskAnswers в loadLectureContent
+  // Эта функция больше не нужна, но оставляем для совместимости
 }
 
 function renderMarkdown(text) {
@@ -261,8 +459,9 @@ function renderMarkdown(text) {
   return marked(text)
 }
 
-function selectLecture(lecture) {
-  if (!lecture) return
+async function selectLecture(topic, lecture) {
+  if (!lecture || !topic) return
+  activeTopicKey.value = topic.key
   activeLectureKey.value = lecture.key
   activeTaskKey.value = null
   lectureLoading.value = true
@@ -270,24 +469,18 @@ function selectLecture(lecture) {
   tasks.value = []
   isEditing.value = false
   
-  setTimeout(() => {
-    loadLectureContent(lecture)
-  }, 100)
+  return new Promise((resolve) => {
+    setTimeout(async () => {
+      await loadLectureContent(topic, lecture)
+      await loadSubmissions()
+      setupAutoNext()
+      resolve()
+    }, 100)
+  })
 }
 
-function selectTask(lecture, task) {
-  selectLecture(lecture)
-  activeTaskKey.value = task.key
-  // Прокрутка к задаче будет через ref или через setTimeout
-  setTimeout(() => {
-    const element = document.querySelector(`[data-task-key="${task.key}"]`)
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }
-  }, 300)
-}
 
-function loadLectureContent(lecture) {
+function loadLectureContent(topic, lecture) {
   try {
     // Поддерживаем новый формат с content (markdown) и старый формат с file_to_text
     if (lecture.content) {
@@ -298,35 +491,33 @@ function loadLectureContent(lecture) {
         .then(text => {
           lectureHtml.value = text
         })
-    }
-    
-    // Поддерживаем новый формат с tasks и старый формат с Tasks
-    if (lecture.tasks && Array.isArray(lecture.tasks)) {
-      tasks.value = lecture.tasks
-    } else if (lecture.tasks && typeof lecture.tasks === 'object') {
-      tasks.value = Object.entries(lecture.tasks).map(([key, value]) => ({
-        key,
-        ...(value || {})
-      }))
-    } else if (lecture.Tasks) {
-      fetch(lecture.Tasks)
-        .then(resp => resp.json())
-        .then(json => {
-          tasks.value = Object.entries(json).map(([key, value]) => ({
-            key,
-            ...(value || {})
-          }))
+        .catch(() => {
+          lectureLoading.value = false
         })
     }
     
-    // Загружаем сохраненные ответы для этой лекции
-    const lectureKey = lecture.key
-    tasks.value.forEach(task => {
-      const taskId = getTaskId(lectureKey, task.key)
-      if (taskAnswers[taskId]) {
-        answers[task.key] = taskAnswers[taskId]
-      }
-    })
+    // Задачи уже в правильном формате из topics computed
+    if (lecture.tasks && Array.isArray(lecture.tasks) && lecture.tasks.length > 0) {
+      tasks.value = lecture.tasks
+    } else if (lecture.Tasks) {
+      // Старый формат с Tasks (URL на JSON файл)
+      fetch(lecture.Tasks)
+        .then(resp => resp.json())
+        .then(json => {
+          tasks.value = Object.entries(json).map(([taskKey, taskValue]) => ({
+            key: taskKey,
+            type: taskValue?.type || 'manual', // auto или manual
+            ...(taskValue || {})
+          }))
+        })
+        .catch(() => {
+          tasks.value = []
+        })
+    } else {
+      tasks.value = []
+    }
+    
+    // Ответы загружаются через getAnswerForTask, не нужно заполнять answers
   } catch (e) {
     setError(e.message)
   } finally {
@@ -335,12 +526,16 @@ function loadLectureContent(lecture) {
 }
 
 function startEditing() {
-  if (!activeLectureKey.value) return
-  const lecture = lectures.value.find(l => l.key === activeLectureKey.value)
+  if (!activeLectureKey.value || !activeTopicKey.value) return
+  const [topicKey, lectureKey] = activeLectureKey.value.split('.')
+  const topic = topics.value.find(t => t.key === topicKey)
+  if (!topic) return
+  const lecture = topic.lectures.find(l => l.key === activeLectureKey.value)
   if (!lecture) return
   
-  editForm.lectureTitle = lecture.title || `Лекция ${activeLectureKey.value.replace(/[^\d]/g, '')}`
-  editForm.content = lecture.content || lectureHtml.value
+  editForm.lectureTitle = lecture.title || `Лекция ${lectureKey?.replace(/[^\d]/g, '') || ''}`
+  // Используем content из лекции, если есть, иначе текущий lectureHtml
+  editForm.content = lecture.content || lectureHtml.value || ''
   editForm.mode = 'markdown'
   isEditing.value = true
 }
@@ -352,21 +547,28 @@ function cancelEditing() {
 }
 
 async function saveLecture() {
-  if (!activeLectureKey.value || !activeCourse.value) return
+  if (!activeLectureKey.value || !activeTopicKey.value || !activeCourse.value) return
   
   loading.value = true
   setError('')
   
   try {
-    const lecture = lectures.value.find(l => l.key === activeLectureKey.value)
+    const [topicKey, lectureKey] = activeLectureKey.value.split('.')
+    const topic = topics.value.find(t => t.key === topicKey)
+    if (!topic) return
+    const lecture = topic.lectures.find(l => l.key === activeLectureKey.value)
     if (!lecture) return
     
     // Обновляем контент курса
     const updatedContent = { ...courseContent.value.content }
-    updatedContent[activeLectureKey.value] = {
-      ...updatedContent[activeLectureKey.value],
-      title: editForm.lectureTitle,
-      content: editForm.content
+    
+    // Находим нужную тему и лекцию в структуре
+    if (updatedContent[topicKey] && updatedContent[topicKey].lectures) {
+      updatedContent[topicKey].lectures[lectureKey] = {
+        ...updatedContent[topicKey].lectures[lectureKey],
+        title: editForm.lectureTitle,
+        content: editForm.content
+      }
     }
     
     // Отправляем обновление на сервер
@@ -384,7 +586,7 @@ async function saveLecture() {
     
     // Перезагружаем курс
     await loadCourse()
-    selectLecture(lecture)
+    await selectLecture(topic, lecture)
   } catch (e) {
     setError(e.message)
   } finally {
@@ -392,8 +594,314 @@ async function saveLecture() {
   }
 }
 
+const currentTopicKey = computed(() => activeTopicKey.value || '')
+
+// Находим следующую лекцию
+const nextLecture = computed(() => {
+  if (!activeLectureKey.value || !topics.value.length) return null
+  
+  const [topicKey] = activeLectureKey.value.split('.')
+  const topic = topics.value.find(t => t.key === topicKey)
+  if (!topic) return null
+  
+  const currentIndex = topic.lectures.findIndex(l => l.key === activeLectureKey.value)
+  if (currentIndex < topic.lectures.length - 1) {
+    return topic.lectures[currentIndex + 1]
+  }
+  
+  // Ищем в следующей теме
+  const topicIndex = topics.value.findIndex(t => t.key === topicKey)
+  if (topicIndex < topics.value.length - 1) {
+    const nextTopic = topics.value[topicIndex + 1]
+    if (nextTopic.lectures.length > 0) {
+      return nextTopic.lectures[0]
+    }
+  }
+  
+  return null
+})
+
+// Функции для работы с submissions
+async function loadSubmissions() {
+  if (!activeCourse.value?.id || !activeLectureKey.value) return
+  
+  submissionsLoading.value = true
+  try {
+    const [topicKey, lectureKey] = activeLectureKey.value.split('.')
+    
+    // Загружаем свои submissions для всего курса, затем фильтруем по лекции
+    const mySubs = await apiJson(
+      `/submissions/mine?course_id=${activeCourse.value.id}`,
+      {},
+      token.value
+    )
+    // Фильтруем по теме и лекции
+    mySubmissions.value = (mySubs || []).filter(
+      s => s.topic_key === topicKey && s.lecture_key === lectureKey
+    )
+    
+    // Загружаем submissions для проверки (если преподаватель)
+    if (isCreator.value) {
+      const reviewSubs = await apiJson(
+        `/submissions/review?course_id=${activeCourse.value.id}`,
+        {},
+        token.value
+      )
+      // Фильтруем по теме и лекции и исключаем свои ответы
+      reviewSubmissions.value = (reviewSubs || []).filter(
+        s => s.topic_key === topicKey && 
+             s.lecture_key === lectureKey &&
+             s.user_id !== profile.value?.id  // Исключаем свои ответы
+      )
+      
+      // Загружаем имена пользователей
+      await loadUserNames(reviewSubmissions.value)
+    }
+  } catch (e) {
+    console.error('Ошибка загрузки submissions:', e)
+    // Не показываем ошибку пользователю, просто логируем
+  } finally {
+    submissionsLoading.value = false
+  }
+}
+
+function getSubmissionForTask(taskKey) {
+  if (!activeTopicKey.value || !activeLectureKey.value) return null
+  const [topicKey, lectureKey] = activeLectureKey.value.split('.')
+  return mySubmissions.value.find(
+    s => s.topic_key === topicKey && 
+         s.lecture_key === lectureKey && 
+         s.task_key === taskKey
+  ) || null
+}
+
+function submissionStatusClass(taskKey) {
+  const sub = getSubmissionForTask(taskKey)
+  if (!sub) return null  // Не показываем класс, если нет submission
+  if (sub.status === 'rated') return 'rated'
+  if (sub.status === 'checked') return 'checked'
+  if (sub.status === 'not verified') return 'pending'
+  return 'neutral'
+}
+
+function submissionStatusLabel(taskKey) {
+  const sub = getSubmissionForTask(taskKey)
+  if (!sub) return null  // Не показываем статус, если нет submission
+  if (sub.status === 'rated') return 'Оценено'
+  if (sub.status === 'checked') return 'Проверено'
+  if (sub.status === 'not verified') return 'На проверке'
+  return 'Неизвестно'
+}
+
+function isTaskGraded(taskKey) {
+  const sub = getSubmissionForTask(taskKey)
+  return sub?.status === 'rated'
+}
+
+async function loadUserNames(submissions) {
+  // Собираем уникальные user_id
+  const userIds = [...new Set(submissions.map(s => s.user_id).filter(id => id != null))]
+  
+  // Сначала проверяем, есть ли имена в самих submissions (если API их возвращает)
+  submissions.forEach(sub => {
+    if (sub.user_id && sub.user_name && !userNames.value[sub.user_id]) {
+      userNames.value[sub.user_id] = sub.user_name
+    }
+  })
+  
+  // Загружаем имена для тех пользователей, которых еще нет в кэше
+  const missingIds = userIds.filter(id => !userNames.value[id])
+  
+  if (missingIds.length === 0) return
+  
+  // Загружаем информацию о пользователях через API профилей
+  try {
+    for (const userId of missingIds) {
+      try {
+        const userData = await apiJson(`/profile/user/${userId}`, {}, token.value)
+        userNames.value[userId] = userData.name || `Студент #${userId}`
+      } catch {
+        // Если endpoint не существует или нет доступа, используем заглушку
+        userNames.value[userId] = `Студент #${userId}`
+      }
+    }
+  } catch (e) {
+    console.error('Ошибка загрузки имен пользователей:', e)
+    // Заполняем заглушками
+    missingIds.forEach(id => {
+      if (!userNames.value[id]) {
+        userNames.value[id] = `Студент #${id}`
+      }
+    })
+  }
+}
+
+function getUserName(userId) {
+  return userNames.value[userId] || `Студент #${userId}`
+}
+
+function getGradeClass(grade) {
+  if (grade === null || grade === undefined) return 'grade-neutral'
+  if (grade === 5) return 'grade-excellent'
+  if (grade === 4) return 'grade-good'
+  if (grade === 3) return 'grade-average'
+  if (grade === 2) return 'grade-poor'
+  if (grade === 1) return 'grade-bad'
+  return 'grade-neutral'
+}
+
+async function submitTask(task) {
+  if (!activeCourse.value?.id || !activeTopicKey.value || !activeLectureKey.value) return
+  
+  const answer = getAnswerForTask(task.key) || ''
+  
+  // Проверяем, что ответ не пустой (для разных типов задач)
+  let answerStr = ''
+  if (task.type === 'multiple_choice') {
+    // Для множественного выбора ответ - это JSON массив
+    try {
+      const arr = JSON.parse(answer)
+      if (!Array.isArray(arr) || arr.length === 0) return
+      answerStr = JSON.stringify(arr)
+    } catch {
+      return
+    }
+  } else if (typeof answer === 'string') {
+    if (!answer.trim()) return
+    answerStr = answer.trim()
+  } else {
+    answerStr = String(answer)
+  }
+  
+  const [topicKey, lectureKey] = activeLectureKey.value.split('.')
+  
+  try {
+    loading.value = true
+    await apiJson(
+      '/submissions',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          course_id: activeCourse.value.id,
+          topic_key: topicKey,
+          lecture_key: lectureKey,
+          task_key: task.key,
+          answer: answerStr
+        })
+      },
+      token.value
+    )
+    
+    // Обновляем список submissions
+    await loadSubmissions()
+    
+    // Обновляем локальный ответ
+    const taskId = getTaskId(topicKey, lectureKey, task.key)
+    taskAnswers[taskId] = answer
+    saveProgress()
+  } catch (e) {
+    setError(e.message || 'Ошибка при отправке решения')
+  } finally {
+    loading.value = false
+  }
+}
+
+async function gradeSubmission(submission) {
+  if (!activeCourse.value?.id) return
+  
+  // Валидация оценки (1-5)
+  if (submission.grade !== null && (submission.grade < 1 || submission.grade > 5)) {
+    setError('Оценка должна быть от 1 до 5')
+    return
+  }
+  
+  try {
+    loading.value = true
+    await apiJson(
+      `/submissions/${submission.id}/grade`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({
+          status: 'rated',
+          grade: submission.grade,
+          teacher_comment: submission.teacher_comment || null
+        })
+      },
+      token.value
+    )
+    
+    // Обновляем список submissions
+    await loadSubmissions()
+  } catch (e) {
+    setError(e.message || 'Ошибка при сохранении оценки')
+  } finally {
+    loading.value = false
+  }
+}
+
+function goToNextLecture() {
+  if (!nextLecture.value) return
+  const topic = topics.value.find(t => 
+    t.lectures.some(l => l.key === nextLecture.value.key)
+  )
+  if (topic) {
+    selectLecture(topic, nextLecture.value)
+  }
+}
+
+// Автоперелистывание при прокрутке до конца лекции
+let scrollCheckInterval = null
+let intersectionObserver = null
+
+function setupAutoNext() {
+  // Очищаем предыдущие обработчики
+  if (scrollCheckInterval) {
+    clearInterval(scrollCheckInterval)
+  }
+  if (intersectionObserver) {
+    intersectionObserver.disconnect()
+  }
+  
+  // Используем Intersection Observer для отслеживания видимости конца контента
+  nextTick(() => {
+    const sentinel = document.querySelector('.lecture-end-sentinel')
+    if (sentinel && nextLecture.value) {
+      intersectionObserver = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              // Конец лекции виден - можно показать кнопку следующей лекции
+              const nextBtn = document.querySelector('.next-lecture')
+              if (nextBtn) {
+                nextBtn.style.opacity = '1'
+                nextBtn.style.transform = 'translateY(0)'
+              }
+            }
+          })
+        },
+        { threshold: 0.1 }
+      )
+      intersectionObserver.observe(sentinel)
+    }
+  })
+}
+
 watch(() => route.params.id, loadCourse, { immediate: true })
-watch(answers, saveAnswers, { deep: true })
+watch(() => route.query.edit, async (newVal) => {
+  // Если параметр edit изменился на 'true' и курс уже загружен
+  if (newVal === 'true' && courseContent.value && isCreator.value && topics.value.length > 0 && !isEditing.value) {
+    await nextTick()
+    const firstTopic = topics.value[0]
+    if (firstTopic.lectures.length > 0) {
+      const firstLecture = firstTopic.lectures[0]
+      await selectLecture(firstTopic, firstLecture)
+      setTimeout(() => {
+        startEditing()
+      }, 600)
+    }
+  }
+})
+// Ответы сохраняются через updateAnswer -> saveProgress
 </script>
 
 <style scoped>
@@ -429,7 +937,7 @@ watch(answers, saveAnswers, { deep: true })
 
 .course-body {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
+  grid-template-columns: 340px minmax(0, 1fr);
   gap: 24px;
 }
 
@@ -459,8 +967,19 @@ watch(answers, saveAnswers, { deep: true })
 .lesson-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 16px;
+}
+
+.topic-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  background: #eff6ff;
+  color: #1e40af;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 8px;
 }
 
 .lesson-header h3 {
@@ -632,6 +1151,225 @@ watch(answers, saveAnswers, { deep: true })
 button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.lecture-end-sentinel {
+  height: 1px;
+  margin-top: 48px;
+}
+
+.next-lecture {
+  margin-top: 32px;
+  padding-top: 32px;
+  border-top: 2px solid #e5e7eb;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+.next-lecture-content {
+  text-align: center;
+  padding: 24px;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border-radius: 12px;
+  border: 2px solid #3b82f6;
+}
+
+.next-lecture-text {
+  margin: 0 0 16px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e40af;
+}
+
+.lecture-divider {
+  margin: 48px 0;
+  height: 3px;
+  background: linear-gradient(to right, transparent, #d1d5db, transparent);
+  border-radius: 2px;
+}
+
+.reviews {
+  margin-top: 48px;
+  padding: 32px;
+  background: #f9fafb;
+  border-radius: 12px;
+  border: 2px solid #e5e7eb;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.reviews h3 {
+  margin: 0 0 24px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #1f2328;
+}
+
+.review-card {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.review-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.review-title {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.badge.neutral {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.badge.light {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.badge.rated {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.badge.checked {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.badge.pending {
+  background: #fce7f3;
+  color: #9f1239;
+}
+
+.grade-badge {
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.grade-excellent {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.grade-good {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.grade-average {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.grade-poor {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.grade-bad {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.grade-neutral {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.review-answer {
+  margin-bottom: 16px;
+}
+
+.review-answer strong {
+  display: block;
+  margin-bottom: 8px;
+  color: #1f2328;
+  font-size: 14px;
+}
+
+.answer-box {
+  padding: 12px;
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #374151;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.review-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.review-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.review-input-group label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2328;
+}
+
+.grade-select {
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  width: 120px;
+  background: white;
+}
+
+.reviews-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.comment-textarea {
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 80px;
+}
+
+.btn-primary.small {
+  padding: 8px 16px;
+  font-size: 13px;
 }
 
 @media (max-width: 1000px) {

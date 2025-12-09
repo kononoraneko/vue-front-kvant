@@ -67,18 +67,21 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, watch } from 'vue'
 import { useAuth } from '../composables/useAuth'
-import { useApi } from '../composables/useApi'
 
-const { login, register, loading } = useAuth()
-const { error, setError } = useApi()
+const { login, register, loading, error, setError } = useAuth()
 
 const mode = ref('login')
 const form = reactive({
   login: '',
   password: '',
   name: ''
+})
+
+// Очищаем ошибку при смене режима
+watch(mode, () => {
+  setError('')
 })
 
 async function handleSubmit() {
