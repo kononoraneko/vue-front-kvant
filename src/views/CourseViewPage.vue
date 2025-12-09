@@ -209,13 +209,14 @@
                   </div>
                 </section>
 
-                <SubmissionsModal
-                  :is-open="showSubmissionsModal"
-                  :submissions="reviewSubmissions"
-                  :loading="submissionsLoading"
-                  @close="showSubmissionsModal = false"
-                  @grade="gradeSubmission"
-                />
+    <SubmissionsModal
+      :is-open="showSubmissionsModal"
+      :submissions="reviewSubmissions"
+      :loading="submissionsLoading"
+      :course-content="courseContent?.content || {}"
+      @close="showSubmissionsModal = false"
+      @grade="gradeSubmission"
+    />
 
                 <div class="lecture-end-sentinel"></div>
                 <div v-if="nextLecture" class="next-lecture">

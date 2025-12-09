@@ -125,22 +125,22 @@
                   <div class="task-meta">
                     <span class="lecture-name">{{ sub.lecture_key }}</span>
                     <span class="task-name">{{ sub.task_key }}</span>
+                    <template v-if="getTaskInfo(sub.course_id, sub.topic_key, sub.lecture_key, sub.task_key)">
+                      <div class="task-question">
+                        <strong>Вопрос:</strong> 
+                        <div v-html="getTaskInfo(sub.course_id, sub.topic_key, sub.lecture_key, sub.task_key).html || 'Нет описания'"></div>
+                      </div>
+                    </template>
                   </div>
                 </td>
                 <td class="answer-cell">
                   <div class="answer-preview">
-                    <template v-if="isJsonAnswer(sub.answer)">
-                      <span
-                        v-for="(option, idx) in parseJsonAnswer(sub.answer)"
-                        :key="idx"
-                        class="answer-option-badge"
-                      >
-                        {{ idx + 1 }}
-                      </span>
-                    </template>
-                    <template v-else>
-                      {{ truncateAnswer(sub.answer, 50) }}
-                    </template>
+                    <div class="student-answer">
+                      <strong>Ответ ученика:</strong> {{ formatAnswer(sub) }}
+                    </div>
+                    <div v-if="getCorrectAnswer(sub)" class="correct-answer">
+                      <strong>Правильный ответ:</strong> {{ getCorrectAnswer(sub) }}
+                    </div>
                   </div>
                 </td>
                 <td class="status-cell">
@@ -196,6 +196,7 @@
       :is-open="reviewModalOpen"
       :submissions="[selectedSubmission].filter(Boolean)"
       :loading="false"
+      :course-content="selectedSubmission ? coursesContent[selectedSubmission.course_id] : {}"
       @close="reviewModalOpen = false"
       @grade="handleGradeSubmission"
     />
@@ -320,6 +321,7 @@ const { error, setError, loading, apiJson } = useApi()
 
 const submissions = ref([])
 const myCourses = ref([])
+const coursesContent = ref({}) // Кэш содержимого курсов
 const selectedCourse = ref(null)
 const selectedStatus = ref(null)
 const reviewModalOpen = ref(false)
@@ -406,11 +408,118 @@ async function loadSubmissions() {
     
     // Загружаем список курсов
     await loadCourses()
+    
+    // Загружаем содержимое курсов для отображения задач
+    await loadCoursesContent()
   } catch (e) {
     setError(e.message || 'Ошибка загрузки решений')
   } finally {
     loading.value = false
   }
+}
+
+async function loadCoursesContent() {
+  // Загружаем содержимое только тех курсов, для которых есть submissions
+  const courseIds = [...new Set(submissions.value.map(s => s.course_id))]
+  
+  for (const courseId of courseIds) {
+    if (!coursesContent.value[courseId]) {
+      try {
+        const content = await apiJson(`/courses/${courseId}/content`, {}, token.value)
+        coursesContent.value[courseId] = content.content
+      } catch (e) {
+        console.error(`Ошибка загрузки содержимого курса ${courseId}:`, e)
+      }
+    }
+  }
+}
+
+function getTaskInfo(courseId, topicKey, lectureKey, taskKey) {
+  const content = coursesContent.value[courseId]
+  if (!content) return null
+  
+  try {
+    const topic = content[topicKey]
+    if (!topic || !topic.lectures) return null
+    
+    const lecture = topic.lectures[lectureKey]
+    if (!lecture || !lecture.tasks) return null
+    
+    return lecture.tasks[taskKey] || null
+  } catch {
+    return null
+  }
+}
+
+function formatAnswer(submission) {
+  const taskInfo = getTaskInfo(submission.course_id, submission.topic_key, submission.lecture_key, submission.task_key)
+  
+  if (!taskInfo) {
+    // Если нет информации о задаче, показываем как есть
+    if (isJsonAnswer(submission.answer)) {
+      const indices = parseJsonAnswer(submission.answer)
+      return indices.map(i => `Вариант ${i + 1}`).join(', ')
+    }
+    return submission.answer
+  }
+  
+  if (taskInfo.type === 'single_choice') {
+    // Для single_choice показываем выбранный вариант текстом
+    try {
+      const selectedIndex = parseInt(submission.answer)
+      if (!isNaN(selectedIndex) && taskInfo.options && taskInfo.options[selectedIndex]) {
+        return taskInfo.options[selectedIndex]
+      }
+    } catch {
+      return submission.answer
+    }
+  } else if (taskInfo.type === 'multiple_choice') {
+    // Для multiple_choice показываем выбранные варианты текстом
+    try {
+      const selectedIndices = parseJsonAnswer(submission.answer)
+      if (Array.isArray(selectedIndices) && taskInfo.options) {
+        return selectedIndices
+          .map(i => taskInfo.options[i])
+          .filter(Boolean)
+          .join(', ')
+      }
+    } catch {
+      return submission.answer
+    }
+  }
+  
+  return submission.answer
+}
+
+function getCorrectAnswer(submission) {
+  const taskInfo = getTaskInfo(submission.course_id, submission.topic_key, submission.lecture_key, submission.task_key)
+  
+  if (!taskInfo) return null
+  
+  if (taskInfo.type === 'single_choice') {
+    const correctIndex = taskInfo.correct_answer
+    if (correctIndex !== undefined && correctIndex !== null && taskInfo.options && taskInfo.options[correctIndex]) {
+      return taskInfo.options[correctIndex]
+    }
+  } else if (taskInfo.type === 'multiple_choice') {
+    try {
+      const correctIndices = typeof taskInfo.correct_answer === 'string' 
+        ? JSON.parse(taskInfo.correct_answer) 
+        : taskInfo.correct_answer
+      if (Array.isArray(correctIndices) && taskInfo.options) {
+        return correctIndices
+          .map(i => taskInfo.options[i])
+          .filter(Boolean)
+          .join(', ')
+      }
+    } catch {
+      return null
+    }
+  } else if (taskInfo.type === 'text_answer') {
+    return taskInfo.correct_answer || null
+  }
+  
+  return null
 }
 
 async function loadCourses() {
@@ -470,11 +579,6 @@ function parseJsonAnswer(answer) {
   }
 }
 
-function truncateAnswer(answer, maxLength) {
-  if (!answer) return ''
-  if (answer.length <= maxLength) return answer
-  return answer.substring(0, maxLength) + '...'
-}
 
 function openReviewModal(submission) {
   selectedSubmission.value = submission
@@ -815,8 +919,52 @@ onMounted(async () => {
 .task-meta {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
   font-size: 13px;
+}
+
+.task-question {
+  margin-top: 8px;
+  padding: 8px;
+  background: #f9fafb;
+  border-radius: 6px;
+  border-left: 3px solid #2563eb;
+  font-size: 12px;
+}
+
+.task-question strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #1f2328;
+}
+
+.answer-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.student-answer {
+  padding: 8px;
+  background: #eff6ff;
+  border-radius: 6px;
+  border-left: 3px solid #2563eb;
+}
+
+.student-answer strong {
+  color: #1e40af;
+}
+
+.correct-answer {
+  padding: 8px;
+  background: #dcfce7;
+  border-radius: 6px;
+  border-left: 3px solid #16a34a;
+  font-size: 12px;
+}
+
+.correct-answer strong {
+  color: #166534;
 }
 
 .lecture-name {

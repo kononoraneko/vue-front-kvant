@@ -22,7 +22,18 @@
             :key="taskKey"
             class="task-group"
           >
-            <h4 class="task-group-title">Задача: {{ taskKey }}</h4>
+              <div class="task-group-header">
+              <h4 class="task-group-title">Задача: {{ taskKey }}</h4>
+              <template v-if="getTaskInfoFromKey(taskKey)">
+                <div class="task-question-box">
+                  <strong>Вопрос:</strong>
+                  <div v-html="getTaskInfoFromKey(taskKey).html || 'Нет описания'"></div>
+                  <div v-if="getCorrectAnswerFromKey(taskKey)" class="correct-answer-hint">
+                    <strong>Правильный ответ:</strong> {{ getCorrectAnswerFromKey(taskKey) }}
+                  </div>
+                </div>
+              </template>
+            </div>
             
             <div
               v-for="sub in taskSubmissions"
@@ -40,16 +51,9 @@
               </div>
 
               <div class="submission-answer">
-                <strong>Ответ:</strong>
+                <strong>Ответ ученика:</strong>
                 <div class="answer-content">
-                  <template v-if="isJsonAnswer(sub.answer)">
-                    <div v-for="(option, idx) in parseJsonAnswer(sub.answer)" :key="idx" class="answer-option">
-                      {{ idx + 1 }}. {{ option }}
-                    </div>
-                  </template>
-                  <template v-else>
-                    {{ sub.answer }}
-                  </template>
+                  {{ formatAnswer(sub) }}
                 </div>
               </div>
 
@@ -149,10 +153,12 @@ const grading = ref(false)
 const groupedSubmissions = computed(() => {
   const grouped = {}
   props.submissions.forEach(sub => {
-    if (!grouped[sub.task_key]) {
-      grouped[sub.task_key] = []
+    // Используем полный ключ задачи для группировки
+    const taskKey = `${sub.topic_key}.${sub.lecture_key}.${sub.task_key}`
+    if (!grouped[taskKey]) {
+      grouped[taskKey] = []
     }
-    grouped[sub.task_key].push(sub)
+    grouped[taskKey].push(sub)
   })
   return grouped
 })
@@ -175,18 +181,11 @@ function getStatusLabel(status) {
   return 'Неизвестно'
 }
 
-function formatDate() {
-  // Если есть дата создания, можно её отформатировать
-  return ''
-}
-
-function isJsonAnswer(answer) {
-  try {
-    JSON.parse(answer)
-    return true
-  } catch {
-    return false
+function formatDate(submission) {
+  if (submission.created_at) {
+    return new Date(submission.created_at).toLocaleString('ru-RU')
   }
+  return ''
 }
 
 function parseJsonAnswer(answer) {
@@ -195,6 +194,113 @@ function parseJsonAnswer(answer) {
   } catch {
     return []
   }
+}
+
+// Получаем информацию о задаче по ключу
+function getTaskInfoByKey(topicKey, lectureKey, taskKey) {
+  if (!props.courseContent) return null
+  
+  try {
+    const topic = props.courseContent[topicKey]
+    if (!topic || !topic.lectures) return null
+    
+    const lecture = topic.lectures[lectureKey]
+    if (!lecture || !lecture.tasks) return null
+    
+    return lecture.tasks[taskKey] || null
+  } catch {
+    return null
+  }
+}
+
+function getTaskInfoFromKey(taskKey) {
+  // taskKey имеет формат "topicKey.lectureKey.taskKey"
+  if (!props.courseContent) return null
+  
+  try {
+    const parts = taskKey.split('.')
+    if (parts.length < 3) return null
+    
+    const topicKey = parts[0]
+    const lectureKey = parts[1]
+    const taskKeyOnly = parts.slice(2).join('.')
+    
+    return getTaskInfoByKey(topicKey, lectureKey, taskKeyOnly)
+  } catch {
+    return null
+  }
+}
+
+function getCorrectAnswerFromKey(taskKey) {
+  const taskInfo = getTaskInfoFromKey(taskKey)
+  if (!taskInfo) return null
+  
+  if (taskInfo.type === 'single_choice') {
+    const correctIndex = taskInfo.correct_answer
+    if (correctIndex !== undefined && correctIndex !== null && taskInfo.options && taskInfo.options[correctIndex]) {
+      return taskInfo.options[correctIndex]
+    }
+  } else if (taskInfo.type === 'multiple_choice') {
+    try {
+      const correctIndices = typeof taskInfo.correct_answer === 'string' 
+        ? JSON.parse(taskInfo.correct_answer) 
+        : taskInfo.correct_answer
+      if (Array.isArray(correctIndices) && taskInfo.options) {
+        return correctIndices
+          .map(i => taskInfo.options[i])
+          .filter(Boolean)
+          .join(', ')
+      }
+    } catch {
+      return null
+    }
+  } else if (taskInfo.type === 'text_answer') {
+    return taskInfo.correct_answer || null
+  }
+  
+  return null
+}
+
+function formatAnswer(submission) {
+  const taskInfo = getTaskInfoByKey(submission.topic_key, submission.lecture_key, submission.task_key)
+  
+  if (!taskInfo) {
+    // Если нет информации о задаче, показываем как есть
+    try {
+      const indices = parseJsonAnswer(submission.answer)
+      if (Array.isArray(indices)) {
+        return indices.map(i => `Вариант ${i + 1}`).join(', ')
+      }
+    } catch {
+      // Не JSON, показываем как есть
+    }
+    return submission.answer
+  }
+  
+  if (taskInfo.type === 'single_choice') {
+    try {
+      const selectedIndex = parseInt(submission.answer)
+      if (!isNaN(selectedIndex) && taskInfo.options && taskInfo.options[selectedIndex]) {
+        return taskInfo.options[selectedIndex]
+      }
+    } catch {
+      return submission.answer
+    }
+  } else if (taskInfo.type === 'multiple_choice') {
+    try {
+      const selectedIndices = parseJsonAnswer(submission.answer)
+      if (Array.isArray(selectedIndices) && taskInfo.options) {
+        return selectedIndices
+          .map(i => taskInfo.options[i])
+          .filter(Boolean)
+          .join(', ')
+      }
+    } catch {
+      return submission.answer
+    }
+  }
+  
+  return submission.answer
 }
 
 function getGradeClass(grade) {
@@ -307,13 +413,51 @@ function markAsViewed(submission) {
   background: #f9fafb;
 }
 
+.task-group-header {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #e5e7eb;
+}
+
 .task-group-title {
-  margin: 0 0 16px;
-  font-size: 16px;
+  margin: 0 0 12px;
+  font-size: 18px;
   font-weight: 600;
   color: #1f2328;
-  padding-bottom: 12px;
-  border-bottom: 2px solid #e5e7eb;
+}
+
+.task-question-box {
+  padding: 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border-left: 4px solid #2563eb;
+  margin-top: 12px;
+}
+
+.task-question-box strong {
+  display: block;
+  margin-bottom: 8px;
+  color: #1f2328;
+  font-size: 14px;
+}
+
+.task-question-box > div {
+  margin-bottom: 12px;
+  color: #374151;
+  line-height: 1.6;
+}
+
+.correct-answer-hint {
+  margin-top: 12px;
+  padding: 8px;
+  background: #dcfce7;
+  border-radius: 6px;
+  border-left: 3px solid #16a34a;
+  font-size: 13px;
+}
+
+.correct-answer-hint strong {
+  color: #166534;
 }
 
 .submission-item {
