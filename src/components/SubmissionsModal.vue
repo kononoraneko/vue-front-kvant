@@ -23,15 +23,52 @@
             class="task-group"
           >
               <div class="task-group-header">
-              <h4 class="task-group-title">Задача: {{ taskKey }}</h4>
+              <div class="task-header-top">
+                <div>
+                  <h4 class="task-group-title">{{ getTaskDisplayName(taskKey) }}</h4>
+                  <template v-if="getTaskInfoFromKey(taskKey)">
+                    <span class="task-type-badge" :class="getTaskTypeClass(getTaskInfoFromKey(taskKey).type)">
+                      {{ getTaskTypeLabel(getTaskInfoFromKey(taskKey).type) }}
+                    </span>
+                  </template>
+                </div>
+              </div>
               <template v-if="getTaskInfoFromKey(taskKey)">
                 <div class="task-question-box">
-                  <strong>Вопрос:</strong>
-                  <div v-html="getTaskInfoFromKey(taskKey).html || 'Нет описания'"></div>
-                  <div v-if="getCorrectAnswerFromKey(taskKey)" class="correct-answer-hint">
-                    <strong>Правильный ответ:</strong> {{ getCorrectAnswerFromKey(taskKey) }}
-                  </div>
+                  <div class="section-label">Вопрос:</div>
+                  <div class="question-content" v-html="(getTaskInfoFromKey(taskKey)?.html || 'Нет описания')"></div>
                 </div>
+                <template v-if="getTaskInfoFromKey(taskKey)">
+                  <div v-if="getTaskInfoFromKey(taskKey)?.type === 'single_choice' || getTaskInfoFromKey(taskKey)?.type === 'multiple_choice'" class="options-box">
+                    <div class="section-label">Варианты ответов:</div>
+                    <div class="options-list">
+                      <div
+                        v-for="(option, index) in (getTaskInfoFromKey(taskKey)?.options || [])"
+                        :key="index"
+                        class="option-item"
+                        :class="{ 'option-correct': isCorrectOption(taskKey, index) }"
+                      >
+                        <span class="option-number">{{ index + 1 }}.</span>
+                        <span class="option-text">{{ option }}</span>
+                        <span v-if="isCorrectOption(taskKey, index)" class="correct-mark">✓</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-else-if="getTaskInfoFromKey(taskKey)?.type === 'text_answer' || getTaskInfoFromKey(taskKey)?.type === 'manual'">
+                    <div v-if="getCorrectAnswerFromKey(taskKey)" class="correct-answer-box">
+                      <div class="section-label">Правильный ответ:</div>
+                      <div class="correct-answer-value">{{ getCorrectAnswerFromKey(taskKey) }}</div>
+                    </div>
+                    <div v-else class="correct-answer-box" style="background: #fef3c7; border-color: #f59e0b;">
+                      <div class="section-label">Тип задачи:</div>
+                      <div class="correct-answer-value" style="color: #92400e;">Требует ручной проверки преподавателем</div>
+                    </div>
+                  </div>
+                  <div v-else-if="getCorrectAnswerFromKey(taskKey)" class="correct-answer-box">
+                    <div class="section-label">Правильный ответ:</div>
+                    <div class="correct-answer-value">{{ getCorrectAnswerFromKey(taskKey) }}</div>
+                  </div>
+                </template>
               </template>
             </div>
             
@@ -43,7 +80,7 @@
               <div class="submission-header">
                 <div class="submission-student">
                   <strong>{{ sub.user_name || `Студент #${sub.user_id}` }}</strong>
-                  <span class="submission-date">{{ formatDate(sub) }}</span>
+                  <span class="submission-date">📅 {{ formatDate(sub) }}</span>
                 </div>
                 <span class="badge" :class="getStatusClass(sub.status)">
                   {{ getStatusLabel(sub.status) }}
@@ -51,9 +88,9 @@
               </div>
 
               <div class="submission-answer">
-                <strong>Ответ ученика:</strong>
-                <div class="answer-content">
-                  {{ formatAnswer(sub) }}
+                <div class="section-label">Ответ ученика:</div>
+                <div class="answer-content" :class="{ 'answer-text': isTextAnswer(sub) }">
+                  {{ getAnswerDisplay(sub) }}
                 </div>
               </div>
 
@@ -143,6 +180,10 @@ const props = defineProps({
   loading: {
     type: Boolean,
     default: false
+  },
+  courseContent: {
+    type: Object,
+    default: () => ({})
   }
 })
 
@@ -183,9 +224,31 @@ function getStatusLabel(status) {
 
 function formatDate(submission) {
   if (submission.created_at) {
-    return new Date(submission.created_at).toLocaleString('ru-RU')
+    try {
+      const date = new Date(submission.created_at)
+      const now = new Date()
+      const diffMs = now - date
+      const diffMins = Math.floor(diffMs / 60000)
+      const diffHours = Math.floor(diffMs / 3600000)
+      const diffDays = Math.floor(diffMs / 86400000)
+      
+      if (diffMins < 1) return 'только что'
+      if (diffMins < 60) return `${diffMins} мин. назад`
+      if (diffHours < 24) return `${diffHours} ч. назад`
+      if (diffDays < 7) return `${diffDays} дн. назад`
+      
+      return date.toLocaleString('ru-RU', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    } catch {
+      return 'Дата неизвестна'
+    }
   }
-  return ''
+  return 'Дата неизвестна'
 }
 
 function parseJsonAnswer(answer) {
@@ -198,17 +261,33 @@ function parseJsonAnswer(answer) {
 
 // Получаем информацию о задаче по ключу
 function getTaskInfoByKey(topicKey, lectureKey, taskKey) {
-  if (!props.courseContent) return null
+  if (!props.courseContent || Object.keys(props.courseContent).length === 0) {
+    console.warn('courseContent пустой или отсутствует', props.courseContent)
+    return null
+  }
   
   try {
     const topic = props.courseContent[topicKey]
-    if (!topic || !topic.lectures) return null
+    if (!topic || !topic.lectures) {
+      console.warn('Тема не найдена:', topicKey, 'Доступные темы:', Object.keys(props.courseContent))
+      return null
+    }
     
     const lecture = topic.lectures[lectureKey]
-    if (!lecture || !lecture.tasks) return null
+    if (!lecture || !lecture.tasks) {
+      console.warn('Лекция не найдена:', lectureKey, 'Доступные лекции:', Object.keys(topic.lectures))
+      return null
+    }
     
-    return lecture.tasks[taskKey] || null
-  } catch {
+    const task = lecture.tasks[taskKey]
+    if (!task) {
+      console.warn('Задача не найдена:', taskKey, 'Доступные задачи:', Object.keys(lecture.tasks))
+      return null
+    }
+    
+    return task
+  } catch (e) {
+    console.error('Ошибка получения информации о задаче:', e, topicKey, lectureKey, taskKey)
     return null
   }
 }
@@ -269,38 +348,38 @@ function formatAnswer(submission) {
     try {
       const indices = parseJsonAnswer(submission.answer)
       if (Array.isArray(indices)) {
-        return indices.map(i => `Вариант ${i + 1}`).join(', ')
+        return indices.map(i => `${i + 1}`).join(', ')
       }
     } catch {
       // Не JSON, показываем как есть
     }
-    return submission.answer
+    return submission.answer || '(пустой ответ)'
   }
   
   if (taskInfo.type === 'single_choice') {
     try {
       const selectedIndex = parseInt(submission.answer)
-      if (!isNaN(selectedIndex) && taskInfo.options && taskInfo.options[selectedIndex]) {
-        return taskInfo.options[selectedIndex]
+      if (!isNaN(selectedIndex) && taskInfo.options && taskInfo.options[selectedIndex] !== undefined) {
+        return `${selectedIndex + 1}. ${taskInfo.options[selectedIndex]}`
       }
     } catch {
-      return submission.answer
+      return submission.answer || '(пустой ответ)'
     }
   } else if (taskInfo.type === 'multiple_choice') {
     try {
       const selectedIndices = parseJsonAnswer(submission.answer)
       if (Array.isArray(selectedIndices) && taskInfo.options) {
         return selectedIndices
-          .map(i => taskInfo.options[i])
+          .map(i => `${i + 1}. ${taskInfo.options[i]}`)
           .filter(Boolean)
-          .join(', ')
+          .join('; ')
       }
     } catch {
-      return submission.answer
+      return submission.answer || '(пустой ответ)'
     }
   }
   
-  return submission.answer
+  return submission.answer || '(пустой ответ)'
 }
 
 function getGradeClass(grade) {
@@ -327,6 +406,110 @@ function markAsViewed(submission) {
   // Оценку оставляем как есть
   submission.teacher_comment = 'Просмотрено преподавателем'
   gradeSubmission(submission)
+}
+
+function getTaskTypeLabel(type) {
+  const types = {
+    'single_choice': 'Один правильный ответ',
+    'multiple_choice': 'Несколько правильных ответов',
+    'text_answer': 'Текстовый ответ',
+    'manual': 'Развернутый ответ'
+  }
+  return types[type] || 'Неизвестный тип'
+}
+
+function getTaskTypeClass(type) {
+  const classes = {
+    'single_choice': 'type-single',
+    'multiple_choice': 'type-multiple',
+    'text_answer': 'type-text',
+    'manual': 'type-manual'
+  }
+  return classes[type] || ''
+}
+
+function getTaskDisplayName(taskKey) {
+  // Используем ту же логику, что в TeacherPanelPage
+  if (!props.courseContent || Object.keys(props.courseContent).length === 0) {
+    return taskKey
+  }
+  
+  try {
+    const parts = taskKey.split('.')
+    if (parts.length < 3) {
+      return taskKey
+    }
+    
+    const topicKey = parts[0]
+    const lectureKey = parts[1]
+    const taskKeyOnly = parts.slice(2).join('.')
+    
+    const topic = props.courseContent[topicKey]
+    if (!topic) {
+      return `${topicKey}.${lectureKey}.${taskKeyOnly}`
+    }
+    
+    const topicTitle = topic.title || topicKey
+    const lecture = topic.lectures?.[lectureKey]
+    if (!lecture) {
+      return `${topicTitle} → ${taskKeyOnly}`
+    }
+    
+    const lectureTitle = lecture.title || lectureKey
+    const task = lecture.tasks?.[taskKeyOnly]
+    
+    // Извлекаем название задачи из HTML (первая строка)
+    let taskTitle = taskKeyOnly
+    if (task?.html) {
+      const htmlText = task.html.replace(/<[^>]*>/g, '').trim()
+      const firstLine = htmlText.split('\n')[0]
+      if (firstLine && firstLine.length > 0 && firstLine.length < 80) {
+        taskTitle = firstLine
+      }
+    }
+    
+    return `${topicTitle} → ${lectureTitle} → ${taskTitle}`
+  } catch (e) {
+    console.error('Ошибка получения названия задачи:', e)
+    return taskKey
+  }
+}
+
+function isCorrectOption(taskKey, optionIndex) {
+  const taskInfo = getTaskInfoFromKey(taskKey)
+  if (!taskInfo) return false
+  
+  if (taskInfo.type === 'single_choice') {
+    return taskInfo.correct_answer === optionIndex
+  } else if (taskInfo.type === 'multiple_choice') {
+    try {
+      const correctIndices = typeof taskInfo.correct_answer === 'string' 
+        ? JSON.parse(taskInfo.correct_answer) 
+        : taskInfo.correct_answer
+      return Array.isArray(correctIndices) && correctIndices.includes(optionIndex)
+    } catch {
+      return false
+    }
+  }
+  return false
+}
+
+function isTextAnswer(submission) {
+  const taskInfo = getTaskInfoByKey(submission.topic_key, submission.lecture_key, submission.task_key)
+  return taskInfo && (taskInfo.type === 'text_answer' || taskInfo.type === 'manual')
+}
+
+function getAnswerDisplay(submission) {
+  // Всегда показываем ответ, даже если он пустой
+  const answer = submission.answer || ''
+  
+  if (isTextAnswer(submission)) {
+    return answer || '(пустой ответ)'
+  }
+  
+  // Для задач с выбором форматируем ответ
+  const formatted = formatAnswer(submission)
+  return formatted || '(пустой ответ)'
 }
 </script>
 
@@ -414,50 +597,100 @@ function markAsViewed(submission) {
 }
 
 .task-group-header {
-  margin-bottom: 20px;
-  padding-bottom: 16px;
-  border-bottom: 2px solid #e5e7eb;
+  margin-bottom: 24px;
+  padding: 16px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.task-header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #d1d5db;
 }
 
 .task-group-title {
-  margin: 0 0 12px;
-  font-size: 18px;
-  font-weight: 600;
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  font-weight: 700;
   color: #1f2328;
+  line-height: 1.4;
+}
+
+.task-type-badge {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.task-type-badge.type-single {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.task-type-badge.type-multiple {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.task-type-badge.type-text {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.task-type-badge.type-manual {
+  background: #fce7f3;
+  color: #9f1239;
+}
+
+.section-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #374151;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .task-question-box {
-  padding: 12px;
-  background: #f9fafb;
-  border-radius: 8px;
+  margin-bottom: 16px;
+  padding: 14px;
+  background: white;
+  border-radius: 6px;
+  border: 2px solid #2563eb;
   border-left: 4px solid #2563eb;
-  margin-top: 12px;
 }
 
-.task-question-box strong {
-  display: block;
-  margin-bottom: 8px;
+.question-content {
   color: #1f2328;
+  line-height: 1.7;
   font-size: 14px;
 }
 
-.task-question-box > div {
-  margin-bottom: 12px;
-  color: #374151;
-  line-height: 1.6;
-}
-
-.correct-answer-hint {
-  margin-top: 12px;
-  padding: 8px;
+.correct-answer-box {
+  margin-bottom: 16px;
+  padding: 14px;
   background: #dcfce7;
   border-radius: 6px;
-  border-left: 3px solid #16a34a;
-  font-size: 13px;
+  border: 2px solid #16a34a;
+  border-left: 4px solid #16a34a;
 }
 
-.correct-answer-hint strong {
+.correct-answer-value {
   color: #166534;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 10px 12px;
+  background: white;
+  border-radius: 4px;
+  border: 1px solid #bbf7d0;
+  margin-top: 8px;
 }
 
 .submission-item {
@@ -491,6 +724,8 @@ function markAsViewed(submission) {
 .submission-date {
   font-size: 12px;
   color: #6b7280;
+  display: block;
+  margin-top: 4px;
 }
 
 .badge {
@@ -521,24 +756,86 @@ function markAsViewed(submission) {
 }
 
 .submission-answer {
-  margin-bottom: 12px;
-}
-
-.submission-answer strong {
-  display: block;
-  margin-bottom: 8px;
-  font-size: 14px;
-  color: #1f2328;
+  margin-bottom: 16px;
+  padding: 14px;
+  background: white;
+  border-radius: 6px;
+  border: 2px solid #2563eb;
+  border-left: 4px solid #2563eb;
 }
 
 .answer-content {
   padding: 12px;
   background: #f9fafb;
-  border-radius: 6px;
+  border-radius: 4px;
   font-size: 14px;
-  line-height: 1.6;
-  color: #374151;
+  line-height: 1.7;
+  color: #1f2328;
+  margin-top: 8px;
+}
+
+.answer-content.answer-text {
   white-space: pre-wrap;
+  word-wrap: break-word;
+  min-height: 60px;
+}
+
+.options-box {
+  margin-bottom: 16px;
+  padding: 14px;
+  background: #f9fafb;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+}
+
+.options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.option-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: white;
+  border-radius: 4px;
+  border: 1px solid #e5e7eb;
+  transition: all 0.2s;
+}
+
+.option-item.option-correct {
+  background: #dcfce7;
+  border-color: #16a34a;
+  border-width: 2px;
+}
+
+.option-number {
+  font-weight: 700;
+  color: #6b7280;
+  min-width: 24px;
+}
+
+.option-item.option-correct .option-number {
+  color: #166534;
+}
+
+.option-text {
+  flex: 1;
+  color: #1f2328;
+}
+
+.option-item.option-correct .option-text {
+  color: #166534;
+  font-weight: 600;
+}
+
+.correct-mark {
+  color: #16a34a;
+  font-weight: 700;
+  font-size: 18px;
 }
 
 .answer-option {

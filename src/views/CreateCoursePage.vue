@@ -181,7 +181,7 @@ const form = reactive({
           title: '',
           content: '',
           mode: 'markdown',
-          tasks: [{ key: 'task1', html: '', type: 'manual' }]
+          tasks: [{ key: 'Задача 1', html: '', type: 'manual' }]
         }
       ]
     }
@@ -211,7 +211,7 @@ function addTopic() {
         title: '',
         content: '',
         mode: 'markdown',
-        tasks: [{ key: 'task1', html: '' }]
+        tasks: [{ key: 'Задача 1', html: '' }]
       }
     ]
   })
@@ -241,7 +241,7 @@ function removeLecture(topicIndex, lectureIndex) {
 function addTask(topicIndex, lectureIndex) {
   const taskNum = form.topics[topicIndex].lectures[lectureIndex].tasks.length + 1
   form.topics[topicIndex].lectures[lectureIndex].tasks.push({
-    key: `task${taskNum}`,
+    key: `Задача ${taskNum}`,
     html: '',
     type: 'manual'
   })

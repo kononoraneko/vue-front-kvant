@@ -42,33 +42,31 @@
       <div v-else class="submissions-container">
         <!-- Фильтры -->
         <div class="filters">
-          <div class="filter-group">
-            <label class="filter-label">Быстрые фильтры:</label>
-            <div class="filter-buttons">
-              <button
-                type="button"
-                :class="['filter-btn', showOnlyPending && 'active']"
-                @click="togglePendingFilter"
-              >
-                ⚠️ Требуют проверки ({{ pendingCount }})
-              </button>
-              <button
-                type="button"
-                :class="['filter-btn', showOnlyUnviewed && 'active']"
-                @click="toggleUnviewedFilter"
-              >
-                👁️ Не просмотренные ({{ unviewedCount }})
-              </button>
-              <button
-                type="button"
-                :class="['filter-btn', showAll && 'active']"
-                @click="showAllSubmissions"
-              >
-                📋 Все ответы
-              </button>
-            </div>
+        <div class="filters">
+          <div class="filter-buttons">
+            <button
+              type="button"
+              :class="['filter-btn', showOnlyPending && 'active']"
+              @click="togglePendingFilter"
+            >
+              ⚠️ Требуют проверки ({{ pendingCount }})
+            </button>
+            <button
+              type="button"
+              :class="['filter-btn', showOnlyUnviewed && 'active']"
+              @click="toggleUnviewedFilter"
+            >
+              👁️ Не просмотренные ({{ unviewedCount }})
+            </button>
+            <button
+              type="button"
+              :class="['filter-btn', showAll && 'active']"
+              @click="showAllSubmissions"
+            >
+              📋 Все ответы
+            </button>
           </div>
-          <div class="filter-group">
+          <div class="filter-selects">
             <select v-model="selectedCourse" class="filter-select">
               <option :value="null">Все курсы</option>
               <option
@@ -79,12 +77,6 @@
                 {{ course.title }}
               </option>
             </select>
-            <select v-model="selectedStatus" class="filter-select">
-              <option :value="null">Все статусы</option>
-              <option value="not verified">На проверке</option>
-              <option value="checked">Проверено</option>
-              <option value="rated">Оценено</option>
-            </select>
             <button
               type="button"
               class="btn-secondary"
@@ -93,6 +85,7 @@
               🔄 Обновить
             </button>
           </div>
+        </div>
         </div>
 
         <!-- Таблица решений -->
@@ -123,24 +116,17 @@
                 </td>
                 <td class="task-cell">
                   <div class="task-meta">
-                    <span class="lecture-name">{{ sub.lecture_key }}</span>
-                    <span class="task-name">{{ sub.task_key }}</span>
+                    <div class="task-name">{{ getTaskDisplayName(sub) }}</div>
                     <template v-if="getTaskInfo(sub.course_id, sub.topic_key, sub.lecture_key, sub.task_key)">
-                      <div class="task-question">
-                        <strong>Вопрос:</strong> 
-                        <div v-html="getTaskInfo(sub.course_id, sub.topic_key, sub.lecture_key, sub.task_key).html || 'Нет описания'"></div>
-                      </div>
+                      <span class="task-type-small" :class="getTaskTypeClass(getTaskInfo(sub.course_id, sub.topic_key, sub.lecture_key, sub.task_key).type)">
+                        {{ getTaskTypeLabelShort(getTaskInfo(sub.course_id, sub.topic_key, sub.lecture_key, sub.task_key).type) }}
+                      </span>
                     </template>
                   </div>
                 </td>
                 <td class="answer-cell">
                   <div class="answer-preview">
-                    <div class="student-answer">
-                      <strong>Ответ ученика:</strong> {{ formatAnswer(sub) }}
-                    </div>
-                    <div v-if="getCorrectAnswer(sub)" class="correct-answer">
-                      <strong>Правильный ответ:</strong> {{ getCorrectAnswer(sub) }}
-                    </div>
+                    <span class="answer-label">Ответ:</span> {{ formatAnswer(sub) }}
                   </div>
                 </td>
                 <td class="status-cell">
@@ -167,22 +153,12 @@
                 </td>
                 <td class="actions-cell">
                   <button
-                    v-if="sub.status === 'not verified' || (sub.status === 'rated' && sub.teacher_comment === 'Автоматическая проверка')"
                     type="button"
-                    class="btn-primary small"
+                    class="btn-review"
                     @click="openReviewModal(sub)"
                   >
                     {{ sub.status === 'not verified' ? 'Проверить' : 'Просмотреть' }}
                   </button>
-                  <button
-                    v-else-if="sub.status === 'rated'"
-                    type="button"
-                    class="btn-secondary small"
-                    @click="openReviewModal(sub)"
-                  >
-                    Просмотреть
-                  </button>
-                  <span v-else class="reviewed-badge">✓ Проверено</span>
                 </td>
               </tr>
             </tbody>
@@ -323,7 +299,6 @@ const submissions = ref([])
 const myCourses = ref([])
 const coursesContent = ref({}) // Кэш содержимого курсов
 const selectedCourse = ref(null)
-const selectedStatus = ref(null)
 const reviewModalOpen = ref(false)
 const selectedSubmission = ref(null)
 const showOnlyPending = ref(true) // По умолчанию показываем только требующие проверки
@@ -368,29 +343,22 @@ const filteredSubmissions = computed(() => {
     filtered = filtered.filter(s => s.course_id === selectedCourse.value)
   }
   
-  if (selectedStatus.value) {
-    filtered = filtered.filter(s => s.status === selectedStatus.value)
-  }
-  
   return filtered
 })
 
 function togglePendingFilter() {
   showOnlyPending.value = true
   showOnlyUnviewed.value = false
-  selectedStatus.value = null
 }
 
 function toggleUnviewedFilter() {
   showOnlyPending.value = false
   showOnlyUnviewed.value = true
-  selectedStatus.value = null
 }
 
 function showAllSubmissions() {
   showOnlyPending.value = false
   showOnlyUnviewed.value = false
-  selectedStatus.value = null
 }
 
 async function loadSubmissions() {
@@ -491,35 +459,54 @@ function formatAnswer(submission) {
   return submission.answer
 }
 
-function getCorrectAnswer(submission) {
-  const taskInfo = getTaskInfo(submission.course_id, submission.topic_key, submission.lecture_key, submission.task_key)
-  
-  if (!taskInfo) return null
-  
-  if (taskInfo.type === 'single_choice') {
-    const correctIndex = taskInfo.correct_answer
-    if (correctIndex !== undefined && correctIndex !== null && taskInfo.options && taskInfo.options[correctIndex]) {
-      return taskInfo.options[correctIndex]
-    }
-  } else if (taskInfo.type === 'multiple_choice') {
-    try {
-      const correctIndices = typeof taskInfo.correct_answer === 'string' 
-        ? JSON.parse(taskInfo.correct_answer) 
-        : taskInfo.correct_answer
-      if (Array.isArray(correctIndices) && taskInfo.options) {
-        return correctIndices
-          .map(i => taskInfo.options[i])
-          .filter(Boolean)
-          .join(', ')
-      }
-    } catch {
-      return null
-    }
-  } else if (taskInfo.type === 'text_answer') {
-    return taskInfo.correct_answer || null
+function getTaskTypeLabelShort(type) {
+  const types = {
+    'single_choice': '1 из N',
+    'multiple_choice': 'N из M',
+    'text_answer': 'Текст',
+    'manual': 'Развернутый'
   }
+  return types[type] || '?'
+}
+
+function getTaskTypeClass(type) {
+  const classes = {
+    'single_choice': 'type-single',
+    'multiple_choice': 'type-multiple',
+    'text_answer': 'type-text',
+    'manual': 'type-manual'
+  }
+  return classes[type] || ''
+}
+
+function getTaskDisplayName(submission) {
+  const content = coursesContent.value[submission.course_id]
+  if (!content) return `${submission.topic_key}.${submission.lecture_key}.${submission.task_key}`
   
-  return null
+  try {
+    const topic = content[submission.topic_key]
+    if (!topic) return `${submission.topic_key}.${submission.lecture_key}.${submission.task_key}`
+    
+    const topicTitle = topic.title || `Тема ${submission.topic_key}`
+    const lecture = topic.lectures?.[submission.lecture_key]
+    if (!lecture) return `${topicTitle} → ${submission.task_key}`
+    
+    const lectureTitle = lecture.title || `Лекция ${submission.lecture_key}`
+    const task = lecture.tasks?.[submission.task_key]
+    
+    let taskTitle = submission.task_key
+    if (task?.html) {
+      const htmlText = task.html.replace(/<[^>]*>/g, '').trim()
+      const firstLine = htmlText.split('\n')[0]
+      if (firstLine && firstLine.length < 80) {
+        taskTitle = firstLine
+      }
+    }
+    
+    return `${topicTitle} → ${lectureTitle} → ${taskTitle}`
+  } catch {
+    return `${submission.topic_key}.${submission.lecture_key}.${submission.task_key}`
+  }
 }
 
 async function loadCourses() {
@@ -589,34 +576,19 @@ async function handleGradeSubmission(submission) {
   try {
     loading.value = true
     
-    // Если это автопроверенный ответ и преподаватель не меняет оценку,
-    // просто отмечаем как просмотренное (меняем комментарий)
-    const isAutoChecked = submission.status === 'rated' && 
-                         submission.teacher_comment === 'Автоматическая проверка'
-    
-    let comment = submission.teacher_comment || null
-    if (isAutoChecked && !comment) {
-      // Если комментарий удален, оставляем автокомментарий
-      comment = 'Автоматическая проверка'
-    } else if (isAutoChecked && comment && comment !== 'Автоматическая проверка') {
-      // Преподаватель добавил свой комментарий - оставляем его
-      // Можно добавить префикс "Просмотрено: " если нужно
-    }
-    
     await apiJson(
       `/submissions/${submission.id}/grade`,
       {
         method: 'PUT',
         body: JSON.stringify({
           status: 'rated',
-          grade: submission.grade !== null ? submission.grade : submission.grade,
-          teacher_comment: comment
+          grade: submission.grade,
+          teacher_comment: submission.teacher_comment || null
         })
       },
       token.value
     )
     
-    // Обновляем список
     await loadSubmissions()
     reviewModalOpen.value = false
     selectedSubmission.value = null
@@ -813,31 +785,26 @@ onMounted(async () => {
 
 .filters {
   display: flex;
-  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
   gap: 16px;
   padding: 16px;
   background: white;
   border-radius: 8px;
   border: 1px solid #e5e7eb;
-}
-
-.filter-group {
-  display: flex;
-  gap: 12px;
-  align-items: center;
   flex-wrap: wrap;
-}
-
-.filter-label {
-  font-size: 14px;
-  font-weight: 600;
-  color: #374151;
-  margin-right: 8px;
 }
 
 .filter-buttons {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-selects {
+  display: flex;
+  gap: 12px;
+  align-items: center;
   flex-wrap: wrap;
 }
 
@@ -919,70 +886,56 @@ onMounted(async () => {
 .task-meta {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   font-size: 13px;
 }
 
-.task-question {
-  margin-top: 8px;
-  padding: 8px;
-  background: #f9fafb;
-  border-radius: 6px;
-  border-left: 3px solid #2563eb;
-  font-size: 12px;
-}
-
-.task-question strong {
-  display: block;
+.task-name {
+  color: #1f2328;
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.4;
   margin-bottom: 4px;
-  color: #1f2328;
 }
 
-.answer-preview {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.student-answer {
-  padding: 8px;
-  background: #eff6ff;
-  border-radius: 6px;
-  border-left: 3px solid #2563eb;
-}
-
-.student-answer strong {
-  color: #1e40af;
-}
-
-.correct-answer {
-  padding: 8px;
-  background: #dcfce7;
-  border-radius: 6px;
-  border-left: 3px solid #16a34a;
-  font-size: 12px;
-}
-
-.correct-answer strong {
-  color: #166534;
-}
-
-.lecture-name {
-  color: #1f2328;
+.task-type-small {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
   font-weight: 600;
 }
 
-.task-name {
-  color: #6b7280;
+.task-type-small.type-single {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.task-type-small.type-multiple {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.task-type-small.type-text {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.task-type-small.type-manual {
+  background: #fce7f3;
+  color: #9f1239;
 }
 
 .answer-preview {
   font-size: 13px;
   color: #374151;
   max-width: 300px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.answer-label {
+  font-weight: 600;
+  color: #6b7280;
+  margin-right: 4px;
 }
 
 .answer-option-badge {
@@ -1083,9 +1036,21 @@ onMounted(async () => {
   gap: 8px;
 }
 
-.btn-primary.small {
-  padding: 6px 12px;
+.btn-review {
+  padding: 6px 14px;
+  border: 1px solid #2563eb;
+  border-radius: 6px;
+  background: #2563eb;
+  color: white;
   font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-review:hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
 }
 
 .btn-secondary {

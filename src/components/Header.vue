@@ -9,7 +9,6 @@
         <nav class="header-nav">
           <router-link to="/courses" class="nav-link">Курсы</router-link>
           <router-link v-if="isTeacher" to="/teacher" class="nav-link">Панель преподавателя</router-link>
-          <router-link v-if="isTeacher" to="/courses/create" class="nav-link btn-create">+ Создать курс</router-link>
         </nav>
         <span class="user-name">{{ profile?.name }}</span>
         <span class="user-role">{{ profile?.role || 'Student' }}</span>

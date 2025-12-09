@@ -12,11 +12,11 @@
     <div v-if="showEdit && isCreator" class="course-actions">
       <button
         type="button"
-        class="btn-edit-small"
+        class="btn-edit-icon"
         @click.stop="$emit('edit')"
         title="Редактировать курс"
       >
-        ✏️ Редактировать
+        ✏️
       </button>
     </div>
   </article>
@@ -91,22 +91,22 @@ const statusClass = computed(() => {
   gap: 8px;
 }
 
-.btn-edit-small {
-  padding: 6px 12px;
-  border: 1px solid #2563eb;
+.btn-edit-icon {
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
   border-radius: 6px;
   background: white;
-  color: #2563eb;
-  font-size: 13px;
-  font-weight: 600;
+  color: #6b7280;
+  font-size: 16px;
   cursor: pointer;
   transition: all 0.2s;
+  line-height: 1;
 }
 
-.btn-edit-small:hover {
-  background: #eff6ff;
-  border-color: #1d4ed8;
-  color: #1d4ed8;
+.btn-edit-icon:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
+  color: #374151;
 }
 
 .course-card h3 {

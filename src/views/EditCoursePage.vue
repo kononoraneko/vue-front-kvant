@@ -209,7 +209,7 @@ function addTopic() {
         title: '',
         content: '',
         mode: 'markdown',
-        tasks: [{ key: 'task1', html: '' }]
+        tasks: [{ key: 'Задача 1', html: '' }]
       }
     ]
   })
@@ -239,7 +239,7 @@ function removeLecture(topicIndex, lectureIndex) {
 function addTask(topicIndex, lectureIndex) {
   const taskNum = form.topics[topicIndex].lectures[lectureIndex].tasks.length + 1
   form.topics[topicIndex].lectures[lectureIndex].tasks.push({
-    key: `task${taskNum}`,
+    key: `Задача ${taskNum}`,
     html: '',
     type: 'manual'
   })
@@ -293,7 +293,7 @@ async function loadCourse() {
                 options: taskValue.options || null,
                 correct_answer: taskValue.correct_answer || null,
                 placeholder: taskValue.placeholder || null
-              })) : [{ key: 'task1', html: '', type: 'manual' }]
+              })) : [{ key: 'Задача 1', html: '', type: 'manual' }]
             }))
           }
           
@@ -302,7 +302,7 @@ async function loadCourse() {
               title: '',
               content: '',
               mode: 'markdown',
-              tasks: [{ key: 'task1', html: '' }]
+              tasks: [{ key: 'Задача 1', html: '' }]
             })
           }
           
@@ -333,7 +333,7 @@ async function loadCourse() {
           title: '',
           content: '',
           mode: 'markdown',
-          tasks: [{ key: 'task1', html: '' }]
+          tasks: [{ key: 'Задача 1', html: '' }]
         }]
       })
     }

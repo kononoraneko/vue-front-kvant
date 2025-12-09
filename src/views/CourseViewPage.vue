@@ -98,10 +98,11 @@
                     <button
                       v-if="isCreator"
                       type="button"
-                      class="btn-edit"
+                      class="btn-edit-small"
                       @click="startEditing"
+                      title="Редактировать лекцию"
                     >
-                      ✏️ Редактировать
+                      ✏️
                     </button>
                   </div>
                   <div v-html="renderMarkdown(lectureHtml)" />
@@ -126,88 +127,23 @@
                   </div>
                 </section>
 
-                <div class="lecture-divider"></div>
+                <div v-if="isCreator && reviewSubmissions.length" class="lecture-divider"></div>
                 
-                <section
+                <div
                   v-if="isCreator && reviewSubmissions.length"
-                  class="reviews"
+                  class="reviews-section"
                 >
                   <div class="reviews-header">
-                    <h3>Проверка решений (текущая лекция)</h3>
+                    <h3>Проверка решений</h3>
                     <button
                       type="button"
-                      class="btn-secondary"
+                      class="btn-primary"
                       @click="showSubmissionsModal = true"
                     >
-                      📋 Открыть в отдельном окне
+                      📋 Проверить ответы ({{ reviewSubmissions.length }})
                     </button>
                   </div>
-                  <div
-                    v-for="sub in reviewSubmissions"
-                    :key="sub.id"
-                    class="review-card"
-                  >
-                    <div class="review-header">
-                      <div class="review-title">
-                        <span class="badge neutral">{{ getUserName(sub.user_id) }}</span>
-                        <span class="badge light">Задача: {{ sub.task_key }}</span>
-                      </div>
-                      <span
-                        v-if="submissionStatusLabel(sub.task_key)"
-                        class="badge"
-                        :class="submissionStatusClass(sub.task_key)"
-                      >
-                        {{ submissionStatusLabel(sub.task_key) }}
-                      </span>
-                      <span
-                        v-if="sub.grade !== null"
-                        class="grade-badge"
-                        :class="getGradeClass(sub.grade)"
-                      >
-                        {{ sub.grade }}/5
-                      </span>
-                    </div>
-                    <div class="review-answer">
-                      <strong>Ответ студента:</strong>
-                      <div class="answer-box">{{ sub.answer }}</div>
-                    </div>
-                    <div class="review-actions">
-                      <div class="review-input-group">
-                        <label>
-                          Оценка (1-5)
-                          <select
-                            v-model.number="sub.grade"
-                            class="grade-select"
-                          >
-                            <option :value="null">Не оценено</option>
-                            <option :value="1">1</option>
-                            <option :value="2">2</option>
-                            <option :value="3">3</option>
-                            <option :value="4">4</option>
-                            <option :value="5">5</option>
-                          </select>
-                        </label>
-                        <label>
-                          Комментарий преподавателя
-                          <textarea
-                            v-model="sub.teacher_comment"
-                            placeholder="Введите комментарий..."
-                            class="comment-textarea"
-                            rows="3"
-                          />
-                        </label>
-                      </div>
-                      <button
-                        type="button"
-                        class="btn-primary"
-                        :disabled="loading"
-                        @click="gradeSubmission(sub)"
-                      >
-                        {{ loading ? 'Сохранение...' : 'Сохранить оценку' }}
-                      </button>
-                    </div>
-                  </div>
-                </section>
+                </div>
 
     <SubmissionsModal
       :is-open="showSubmissionsModal"
@@ -220,12 +156,9 @@
 
                 <div class="lecture-end-sentinel"></div>
                 <div v-if="nextLecture" class="next-lecture">
-                  <div class="next-lecture-content">
-                    <p class="next-lecture-text">Вы завершили эту лекцию!</p>
-                    <button type="button" class="btn-primary" @click="goToNextLecture">
-                      → Перейти к следующей лекции: {{ nextLecture.title }}
-                    </button>
-                  </div>
+                  <button type="button" class="btn-next-simple" @click="goToNextLecture">
+                    → Следующая: {{ nextLecture.title }}
+                  </button>
                 </div>
               </template>
             </template>
@@ -676,23 +609,6 @@ function getSubmissionForTask(taskKey) {
   ) || null
 }
 
-function submissionStatusClass(taskKey) {
-  const sub = getSubmissionForTask(taskKey)
-  if (!sub) return null  // Не показываем класс, если нет submission
-  if (sub.status === 'rated') return 'rated'
-  if (sub.status === 'checked') return 'checked'
-  if (sub.status === 'not verified') return 'pending'
-  return 'neutral'
-}
-
-function submissionStatusLabel(taskKey) {
-  const sub = getSubmissionForTask(taskKey)
-  if (!sub) return null  // Не показываем статус, если нет submission
-  if (sub.status === 'rated') return 'Оценено'
-  if (sub.status === 'checked') return 'Проверено'
-  if (sub.status === 'not verified') return 'На проверке'
-  return 'Неизвестно'
-}
 
 function isTaskGraded(taskKey) {
   const sub = getSubmissionForTask(taskKey)
@@ -737,19 +653,9 @@ async function loadUserNames(submissions) {
   }
 }
 
-function getUserName(userId) {
-  return userNames.value[userId] || `Студент #${userId}`
-}
 
-function getGradeClass(grade) {
-  if (grade === null || grade === undefined) return 'grade-neutral'
-  if (grade === 5) return 'grade-excellent'
-  if (grade === 4) return 'grade-good'
-  if (grade === 3) return 'grade-average'
-  if (grade === 2) return 'grade-poor'
-  if (grade === 1) return 'grade-bad'
-  return 'grade-neutral'
-}
+
+
 
 async function submitTask(task) {
   if (!activeCourse.value?.id || !activeTopicKey.value || !activeLectureKey.value) return
@@ -1160,27 +1066,31 @@ button:disabled {
 }
 
 .next-lecture {
-  margin-top: 32px;
-  padding-top: 32px;
-  border-top: 2px solid #e5e7eb;
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid #e5e7eb;
   opacity: 0;
-  transform: translateY(20px);
-  transition: opacity 0.5s ease, transform 0.5s ease;
-}
-
-.next-lecture-content {
+  transform: translateY(10px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
   text-align: center;
-  padding: 24px;
-  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-  border-radius: 12px;
-  border: 2px solid #3b82f6;
 }
 
-.next-lecture-text {
-  margin: 0 0 16px;
-  font-size: 16px;
-  font-weight: 600;
-  color: #1e40af;
+.btn-next-simple {
+  padding: 8px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: white;
+  color: #374151;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-next-simple:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
+  color: #1f2328;
 }
 
 .lecture-divider {
@@ -1190,13 +1100,25 @@ button:disabled {
   border-radius: 2px;
 }
 
-.reviews {
-  margin-top: 48px;
-  padding: 32px;
+.reviews-section {
+  margin-top: 32px;
+  padding: 20px;
   background: #f9fafb;
-  border-radius: 12px;
-  border: 2px solid #e5e7eb;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.reviews-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.reviews-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2328;
 }
 
 .reviews h3 {
@@ -1206,167 +1128,6 @@ button:disabled {
   color: #1f2328;
 }
 
-.review-card {
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 20px;
-  margin-bottom: 16px;
-}
-
-.review-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.review-title {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.badge {
-  padding: 4px 12px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.badge.neutral {
-  background: #f3f4f6;
-  color: #374151;
-}
-
-.badge.light {
-  background: #e0e7ff;
-  color: #4338ca;
-}
-
-.badge.rated {
-  background: #dbeafe;
-  color: #1e40af;
-}
-
-.badge.checked {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.badge.pending {
-  background: #fce7f3;
-  color: #9f1239;
-}
-
-.grade-badge {
-  padding: 4px 12px;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.grade-excellent {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.grade-good {
-  background: #dbeafe;
-  color: #1e40af;
-}
-
-.grade-average {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.grade-poor {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.grade-bad {
-  background: #f3f4f6;
-  color: #374151;
-}
-
-.grade-neutral {
-  background: #f3f4f6;
-  color: #6b7280;
-}
-
-.review-answer {
-  margin-bottom: 16px;
-}
-
-.review-answer strong {
-  display: block;
-  margin-bottom: 8px;
-  color: #1f2328;
-  font-size: 14px;
-}
-
-.answer-box {
-  padding: 12px;
-  background: white;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 14px;
-  line-height: 1.6;
-  color: #374151;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-}
-
-.review-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.review-input-group {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.review-input-group label {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #1f2328;
-}
-
-.grade-select {
-  padding: 10px 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 14px;
-  width: 120px;
-  background: white;
-}
-
-.reviews-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
-}
-
-.comment-textarea {
-  padding: 10px 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 14px;
-  font-family: inherit;
-  resize: vertical;
-  min-height: 80px;
-}
 
 .btn-primary.small {
   padding: 8px 16px;

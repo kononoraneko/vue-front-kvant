@@ -3,23 +3,6 @@
     <div class="page-header">
       <h2>Мои курсы</h2>
       <div class="header-actions">
-        <div class="quick-access">
-          <input
-            v-model.number="quickCourseId"
-            type="number"
-            min="1"
-            placeholder="ID курса"
-            class="quick-input"
-          >
-          <button
-            type="button"
-            :disabled="loading || !quickCourseId"
-            @click="openCourseById"
-            class="btn-secondary"
-          >
-            Открыть
-          </button>
-        </div>
         <router-link
           v-if="isTeacher"
           to="/courses/create"
@@ -76,7 +59,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onActivated } from 'vue'
+import { computed, onMounted, onActivated } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 import { useApi } from '../composables/useApi'
@@ -87,7 +70,6 @@ const { profile, isTeacher, loadProfile, loading: authLoading } = useAuth()
 const { error, loading: apiLoading } = useApi()
 
 const loading = computed(() => authLoading.value || apiLoading.value)
-const quickCourseId = ref(null)
 
 const studentCourses = computed(() => {
   return (profile.value?.enrolled_courses) || []
@@ -100,11 +82,6 @@ const createdCourses = computed(() => {
 async function openCourse(course) {
   if (!course?.id) return
   router.push(`/courses/${course.id}`)
-}
-
-async function openCourseById() {
-  if (!quickCourseId.value) return
-  router.push(`/courses/${quickCourseId.value}`)
 }
 
 function editCourse(course) {
@@ -150,41 +127,6 @@ onActivated(async () => {
   font-size: 28px;
   font-weight: 700;
   color: #1f2328;
-}
-
-.quick-access {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.quick-input {
-  padding: 8px 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 14px;
-  width: 120px;
-}
-
-.btn-secondary {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 6px;
-  background: #2563eb;
-  color: white;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: #1d4ed8;
-}
-
-.btn-secondary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 
 .loading {

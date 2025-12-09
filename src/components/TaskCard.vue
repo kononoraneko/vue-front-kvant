@@ -2,7 +2,7 @@
   <article class="task-card" :data-task-key="task.key">
     <header class="task-header">
       <div class="task-title-row">
-        <h4>Задача {{ task.key }}</h4>
+        <h4>{{ task.key }}</h4>
         <div class="task-status">
           <span v-if="submission?.status === 'rated'" class="status-badge rated">
             ✅ Оценено: {{ submission.grade }}/5
@@ -18,7 +18,7 @@
           </span>
         </div>
       </div>
-      <button v-if="task.type !== 'manual'" type="button" class="btn-ghost" @click="openInCodepen">
+      <button v-if="task.type === 'manual'" type="button" class="btn-ghost" @click="openInCodepen">
         Открыть в CodePen
       </button>
     </header>
