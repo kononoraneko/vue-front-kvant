@@ -21,7 +21,7 @@
 </template>
 
 <script setup>
-import { watch, onMounted } from 'vue'
+import { watch, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 
@@ -32,6 +32,7 @@ const { profile, isAuthenticated, isTeacher, logout, loadProfile, token } = useA
 onMounted(async () => {
   if (token.value && !profile.value) {
     await loadProfile()
+    await nextTick()
   }
 })
 

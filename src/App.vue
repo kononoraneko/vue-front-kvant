@@ -1,6 +1,6 @@
 <template>
   <div class="app">
-    <Header />
+    <Header v-if="showHeader" />
     <main class="main-content">
       <router-view />
     </main>
@@ -9,6 +9,13 @@
 
 <script setup>
 import Header from './components/Header.vue'
+import {computed } from 'vue'
+import { useRoute } from 'vue-router';
+
+const route = useRoute()
+
+const showHeader = computed(() => route.name !== 'Login')
+  
 </script>
 
 <style>

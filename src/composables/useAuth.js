@@ -36,8 +36,13 @@ export function useAuth() {
         body: JSON.stringify({ login, password })
       }, null)
       saveToken(data.access_token)
-      profile.value = data.user
-      await loadProfile()
+      
+      if (data.user){
+        profile.value = data.user
+      } else {
+        await loadProfile()
+      }
+      
       router.push('/courses')
       return true
     } catch (e) {

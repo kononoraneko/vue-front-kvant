@@ -18,7 +18,7 @@
         </div>
         <button
           type="button"
-          class="btn-primary"
+          class="btn-secondary"
           @click="showEnrollmentModal = true"
         >
           👥 Зачислить учеников
@@ -245,7 +245,7 @@
                   </div>
                   <button
                     type="button"
-                    class="btn-primary small"
+                    class="filter-btn"
                     @click="enrollStudent(student.id)"
                   >
                     Зачислить

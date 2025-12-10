@@ -158,7 +158,7 @@ onMounted(() => {
   cursor: pointer;
   transition: all 0.2s;
   font-weight: 700;
-  color: #1e40af;
+  color: #0d1d53;
   background: #eff6ff;
   border: 1px solid #bfdbfe;
 }
@@ -168,7 +168,8 @@ onMounted(() => {
 }
 
 .topic-header.expanded {
-  background: #dbeafe;
+  background: #f9fcff;
+  
 }
 
 .topic-icon {
@@ -206,7 +207,7 @@ onMounted(() => {
 
 .tree-lecture.active {
   background: #eff6ff;
-  color: #2563eb;
+  color: #111b31;
 }
 
 .lecture-icon {

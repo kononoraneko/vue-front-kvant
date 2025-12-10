@@ -113,7 +113,7 @@
           :disabled="submitting || !hasAnswer"
           @click="handleSubmit"
         >
-          {{ submitting ? (submission ? 'Обновление...' : 'Отправка...') : (submission ? '🔄 Обновить ответ' : '📤 Отправить на проверку') }}
+          {{ submitting ? (submission ? 'Обновление...' : 'Отправка...') : (submission ? '🔄 Обновить ответ' : 'Отправить на проверку') }}
         </button>
         <div v-else-if="submission?.status === 'rated'" class="submission-complete">
           <span class="complete-icon">✅</span>
@@ -487,12 +487,13 @@ function openInCodepen() {
 }
 
 .btn-submit {
-  background: #2563eb;
-  color: white;
+  background: #ffffff;
+  border: 1px solid #b7bbc4;
+  color: #22347a;
 }
 
 .btn-submit:hover:not(:disabled) {
-  background: #1d4ed8;
+  background: #f1f1f1;
 }
 
 .btn-complete {
@@ -529,12 +530,13 @@ button:disabled {
 }
 
 .choice-option:hover {
-  border-color: #2563eb;
-  background: #eff6ff;
+  border-color: #dfe4ec;
+  
+  background: #f7f6ff;
 }
 
 .choice-option.selected {
-  border-color: #2563eb;
+  border-color: #4435ac;
   background: #eff6ff;
 }
 
