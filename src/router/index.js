@@ -10,7 +10,7 @@ const routes = [
     path: '/login',
     name: 'Login',
     component: () => import('../views/LoginPage.vue'),
-    meta: { requiresAuth: false }
+    meta: { requiresAuth: false, hideHeader: true }
   },
   {
     path: '/courses',

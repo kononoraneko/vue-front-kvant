@@ -120,7 +120,7 @@
                       :model-value="getAnswerForTask(task.key) || ''"
                       :is-completed="isTaskGraded(task.key)"
                       :submission="getSubmissionForTask(task.key)"
-                      :submitting="loading"
+                      :submitting="submittingTask"
                       @update:model-value="updateAnswer(currentTopicKey, activeLectureKey, task.key, $event)"
                       @submit="submitTask(task)"
                     />
@@ -204,6 +204,9 @@ const reviewSubmissions = ref([])
 const submissionsLoading = ref(false)
 const userNames = ref({}) // Кэш имен пользователей
 const showSubmissionsModal = ref(false)
+const submittingTask = ref(false)
+
+const lectureCache = reactive({})
 
 // Сохранение прогресса задач в localStorage
 const completedTasks = reactive(JSON.parse(localStorage.getItem('completedTasks') || '{}'))
@@ -334,6 +337,11 @@ async function loadCourse() {
   
   loading.value = true
   setError('')
+
+  Object.keys(lectureCache).forEach(key => {
+    delete lectureCache[key]
+  })
+
   lectureHtml.value = ''
   tasks.value = []
   activeTopicKey.value = null
@@ -395,6 +403,28 @@ function renderMarkdown(text) {
 
 async function selectLecture(topic, lecture) {
   if (!lecture || !topic) return
+
+  if (lectureCache[lecture.key]) {
+  activeTopicKey.value = topic.key
+  activeLectureKey.value = lecture.key
+
+  const cache = lectureCache[lecture.key]
+  lectureHtml.value = cache.html
+  tasks.value = cache.tasks
+
+  // Прокрутка вверх при повторном выборе той же лекции
+  nextTick(() => {
+    const panel = document.querySelector('.lesson-panel')
+    if (panel) panel.scrollTo({ top: 0, behavior: 'smooth' })
+  })
+
+  // Сразу загружаем submissions, но без перерисовки
+  loadSubmissions()
+
+  // И прекращаем выполнение
+  return
+}
+
   activeTopicKey.value = topic.key
   activeLectureKey.value = lecture.key
   activeTaskKey.value = null
@@ -414,50 +444,56 @@ async function selectLecture(topic, lecture) {
 }
 
 
-function loadLectureContent(topic, lecture) {
+async function loadLectureContent(topic, lecture) {
+  lectureLoading.value = true
+  lectureHtml.value = null
+  tasks.value = null
+
   try {
-    // Поддерживаем новый формат с content (markdown) и старый формат с file_to_text
+    let html = null
+    let taskList = null
+
+    // ---- ЗАГРУЖАЕМ HTML ----
     if (lecture.content) {
-      lectureHtml.value = lecture.content
+      html = lecture.content
     } else if (lecture.file_to_text) {
-      fetch(lecture.file_to_text)
-        .then(resp => resp.text())
-        .then(text => {
-          lectureHtml.value = text
-        })
-        .catch(() => {
-          lectureLoading.value = false
-        })
-    }
-    
-    // Задачи уже в правильном формате из topics computed
-    if (lecture.tasks && Array.isArray(lecture.tasks) && lecture.tasks.length > 0) {
-      tasks.value = lecture.tasks
-    } else if (lecture.Tasks) {
-      // Старый формат с Tasks (URL на JSON файл)
-      fetch(lecture.Tasks)
-        .then(resp => resp.json())
-        .then(json => {
-          tasks.value = Object.entries(json).map(([taskKey, taskValue]) => ({
-            key: taskKey,
-            type: taskValue?.type || 'manual', // auto или manual
-            ...(taskValue || {})
-          }))
-        })
-        .catch(() => {
-          tasks.value = []
-        })
+      const text = await fetch(lecture.file_to_text).then(r => r.text())
+      html = text
     } else {
-      tasks.value = []
+      html = ''
     }
-    
-    // Ответы загружаются через getAnswerForTask, не нужно заполнять answers
+
+    // ---- ЗАГРУЖАЕМ ЗАДАЧИ ----
+    if (lecture.tasks && Array.isArray(lecture.tasks)) {
+      taskList = lecture.tasks
+    } else if (lecture.Tasks) {
+      const json = await fetch(lecture.Tasks).then(r => r.json())
+      taskList = Object.entries(json).map(([taskKey, taskValue]) => ({
+        key: taskKey,
+        type: taskValue?.type || 'manual',
+        ...(taskValue || {})
+      }))
+    } else {
+      taskList = []
+    }
+
+    // Устанавливаем в реактивные переменные
+    lectureHtml.value = html
+    tasks.value = taskList
+
+    // ---- ЗАПИСЫВАЕМ В КЭШ ТОЛЬКО ОДИН РАЗ ----
+    lectureCache[lecture.key] = {
+      html,
+      tasks: taskList
+    }
+
   } catch (e) {
     setError(e.message)
   } finally {
     lectureLoading.value = false
   }
 }
+
 
 function startEditing() {
   if (!activeLectureKey.value || !activeTopicKey.value) return
@@ -654,9 +690,6 @@ async function loadUserNames(submissions) {
 }
 
 
-
-
-
 async function submitTask(task) {
   if (!activeCourse.value?.id || !activeTopicKey.value || !activeLectureKey.value) return
   
@@ -683,7 +716,7 @@ async function submitTask(task) {
   const [topicKey, lectureKey] = activeLectureKey.value.split('.')
   
   try {
-    loading.value = true
+    submittingTask.value = true
     await apiJson(
       '/submissions',
       {
@@ -709,7 +742,7 @@ async function submitTask(task) {
   } catch (e) {
     setError(e.message || 'Ошибка при отправке решения')
   } finally {
-    loading.value = false
+    submittingTask.value = false
   }
 }
 

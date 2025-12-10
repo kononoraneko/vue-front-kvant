@@ -111,7 +111,7 @@
           type="button"
           class="btn-submit"
           :disabled="submitting || !hasAnswer"
-          @click="handleSubmit"
+          @click.prevent="handleSubmit"
         >
           {{ submitting ? (submission ? 'Обновление...' : 'Отправка...') : (submission ? '🔄 Обновить ответ' : 'Отправить на проверку') }}
         </button>

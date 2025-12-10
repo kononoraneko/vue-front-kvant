@@ -14,7 +14,7 @@ import { useRoute } from 'vue-router';
 
 const route = useRoute()
 
-const showHeader = computed(() => route.name !== 'Login')
+const showHeader = computed(() => !route.meta.hideHeader)
   
 </script>
 
