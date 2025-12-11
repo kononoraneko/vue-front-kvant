@@ -599,12 +599,13 @@ async function loadSubmissions() {
   try {
     const [topicKey, lectureKey] = activeLectureKey.value.split('.')
     
-    // Загружаем свои submissions для всего курса, затем фильтруем по лекции
-    const mySubs = await apiJson(
-      `/submissions/mine?course_id=${activeCourse.value.id}`,
+    // Загружаем свои submissions постранично (берем текущую лекцию)
+    const mySubsResp = await apiJson(
+      `/submissions/mine?course_id=${activeCourse.value.id}&lecture_key=${lectureKey}&page_size=200`,
       {},
       token.value
     )
+    const mySubs = mySubsResp?.items ?? mySubsResp ?? []
     // Фильтруем по теме и лекции
     mySubmissions.value = (mySubs || []).filter(
       s => s.topic_key === topicKey && s.lecture_key === lectureKey
@@ -612,11 +613,12 @@ async function loadSubmissions() {
     
     // Загружаем submissions для проверки (если преподаватель)
     if (isCreator.value) {
-      const reviewSubs = await apiJson(
-        `/submissions/review?course_id=${activeCourse.value.id}`,
+      const reviewResp = await apiJson(
+        `/submissions/review?course_id=${activeCourse.value.id}&lecture_key=${lectureKey}&page_size=200`,
         {},
         token.value
       )
+      const reviewSubs = reviewResp?.items ?? reviewResp ?? []
       // Фильтруем по теме и лекции и исключаем свои ответы
       reviewSubmissions.value = (reviewSubs || []).filter(
         s => s.topic_key === topicKey && 

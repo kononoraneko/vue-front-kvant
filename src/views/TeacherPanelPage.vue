@@ -13,7 +13,7 @@
           </div>
           <div class="stat-item">
             <span class="stat-label">Всего ответов:</span>
-            <span class="stat-value">{{ submissions.length }}</span>
+            <span class="stat-value">{{ submissionsTotal }}</span>
           </div>
         </div>
         <button
@@ -60,7 +60,7 @@
             </button>
             <button
               type="button"
-              :class="['filter-btn', showAll && 'active']"
+              :class="['filter-btn', (!showOnlyPending && !showOnlyUnviewed) && 'active']"
               @click="showAllSubmissions"
             >
               📋 Все ответы
@@ -80,7 +80,7 @@
             <button
               type="button"
               class="btn-secondary"
-              @click="loadSubmissions"
+              @click="loadSubmissions(submissionsPage.value)"
             >
               🔄 Обновить
             </button>
@@ -104,7 +104,7 @@
             </thead>
             <tbody>
               <tr
-                v-for="sub in filteredSubmissions"
+                v-for="sub in paginatedSubmissions"
                 :key="sub.id"
                 class="submission-row"
               >
@@ -163,6 +163,30 @@
               </tr>
             </tbody>
           </table>
+          <div
+            v-if="submissionsTotalPages > 1"
+            class="pagination"
+          >
+            <button
+              type="button"
+              class="page-btn"
+              :disabled="submissionsPage <= 1"
+              @click="goSubmissionsPage(-1)"
+            >
+              ←
+            </button>
+            <span class="page-info">
+              Страница {{ submissionsPage }} / {{ submissionsTotalPages }}
+            </span>
+            <button
+              type="button"
+              class="page-btn"
+              :disabled="submissionsPage >= submissionsTotalPages"
+              @click="goSubmissionsPage(1)"
+            >
+              →
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -186,19 +210,23 @@
         </div>
         <div class="modal-body">
           <div class="enrollment-section">
-            <label>
-              Выберите курс:
-              <select v-model="enrollmentCourseId" class="enrollment-select">
-                <option :value="null">Выберите курс...</option>
-                <option
-                  v-for="course in myCourses"
-                  :key="course.id"
-                  :value="course.id"
-                >
-                  {{ course.title }}
-                </option>
-              </select>
-            </label>
+            <div class="section-label">Выберите курс</div>
+            <div class="course-picker" v-if="myCourses.length">
+              <button
+                v-for="course in myCourses"
+                :key="course.id"
+                type="button"
+                class="course-chip"
+                :class="{ active: enrollmentCourseId === course.id }"
+                @click="selectEnrollmentCourse(course.id)"
+              >
+                <span class="course-title">{{ course.title }}</span>
+                <span class="course-meta">ID: {{ course.id }}</span>
+              </button>
+            </div>
+            <div v-else class="empty-small">
+              У вас пока нет созданных курсов
+            </div>
           </div>
 
           <div v-if="enrollmentCourseId" class="enrollment-section">
@@ -235,7 +263,7 @@
               </div>
               <div v-else class="students-grid">
                 <div
-                  v-for="student in availableStudents"
+                  v-for="student in paginatedAvailableStudents"
                   :key="student.id"
                   class="student-card"
                 >
@@ -252,6 +280,30 @@
                   </button>
                 </div>
               </div>
+              <div
+                v-if="availableTotalPages > 1"
+                class="pagination small"
+              >
+                <button
+                  type="button"
+                  class="page-btn"
+                  :disabled="availablePage <= 1"
+                  @click="goAvailablePage(-1)"
+                >
+                  ←
+                </button>
+                <span class="page-info">
+                  Страница {{ availablePage }} / {{ availableTotalPages }}
+                </span>
+                <button
+                  type="button"
+                  class="page-btn"
+                  :disabled="availablePage >= availableTotalPages"
+                  @click="goAvailablePage(1)"
+                >
+                  →
+                </button>
+              </div>
             </div>
 
             <div v-else class="students-list">
@@ -261,7 +313,7 @@
               </div>
               <div v-else class="students-grid">
                 <div
-                  v-for="student in enrolledStudents"
+                  v-for="student in paginatedEnrolledStudents"
                   :key="student.id"
                   class="student-card"
                 >
@@ -277,6 +329,30 @@
                     Отчислить
                   </button>
                 </div>
+              </div>
+              <div
+                v-if="enrolledTotalPages > 1"
+                class="pagination small"
+              >
+                <button
+                  type="button"
+                  class="page-btn"
+                  :disabled="enrolledPage <= 1"
+                  @click="goEnrolledPage(-1)"
+                >
+                  ←
+                </button>
+                <span class="page-info">
+                  Страница {{ enrolledPage }} / {{ enrolledTotalPages }}
+                </span>
+                <button
+                  type="button"
+                  class="page-btn"
+                  :disabled="enrolledPage >= enrolledTotalPages"
+                  @click="goEnrolledPage(1)"
+                >
+                  →
+                </button>
               </div>
             </div>
           </div>
@@ -303,6 +379,8 @@ const reviewModalOpen = ref(false)
 const selectedSubmission = ref(null)
 const showOnlyPending = ref(true) // По умолчанию показываем только требующие проверки
 const showOnlyUnviewed = ref(false)
+const submissionsPage = ref(1)
+const submissionsPageSize = 10
 const showEnrollmentModal = ref(false)
 const enrollmentCourseId = ref(null)
 const enrollmentTab = ref('available')
@@ -310,69 +388,99 @@ const availableStudents = ref([])
 const enrolledStudents = ref([])
 const studentSearch = ref('')
 const loadingStudents = ref(false)
+const availablePage = ref(1)
+const enrolledPage = ref(1)
+const studentsPageSize = 8
+const availableTotal = ref(0)
+const enrolledTotal = ref(0)
 
-const pendingCount = computed(() => {
-  return submissions.value.filter(s => s.status === 'not verified').length
-})
+const pendingCount = ref(0)
+const unviewedCount = ref(0)
 
-const unviewedCount = computed(() => {
-  // Автопроверенные, которые еще не просмотрены преподавателем
-  return submissions.value.filter(s => 
-    s.status === 'rated' && 
-    s.teacher_comment === 'Автоматическая проверка'
-  ).length
-})
+const availableTotalPages = computed(() => Math.max(1, Math.ceil(availableTotal.value / studentsPageSize)))
+const enrolledTotalPages = computed(() => Math.max(1, Math.ceil(enrolledTotal.value / studentsPageSize)))
 
-const filteredSubmissions = computed(() => {
-  let filtered = [...submissions.value]
-  
-  // Применяем быстрые фильтры
-  if (showOnlyPending.value) {
-    filtered = filtered.filter(s => s.status === 'not verified')
-  } else if (showOnlyUnviewed.value) {
-    // Автопроверенные, которые еще не просмотрены
-    filtered = filtered.filter(s => 
-      s.status === 'rated' && 
-      s.teacher_comment === 'Автоматическая проверка'
-    )
-  }
-  // Если showAll - показываем все
-  
-  // Применяем дополнительные фильтры
-  if (selectedCourse.value) {
-    filtered = filtered.filter(s => s.course_id === selectedCourse.value)
-  }
-  
-  return filtered
-})
+const paginatedAvailableStudents = computed(() => availableStudents.value)
 
-function togglePendingFilter() {
+const paginatedEnrolledStudents = computed(() => enrolledStudents.value)
+
+const submissionsTotal = ref(0)
+const submissionsTotalPages = computed(() => Math.max(1, Math.ceil(submissionsTotal.value / submissionsPageSize)))
+
+const paginatedSubmissions = computed(() => submissions.value)
+
+async function togglePendingFilter() {
   showOnlyPending.value = true
   showOnlyUnviewed.value = false
+  await loadSubmissions(1)
 }
 
-function toggleUnviewedFilter() {
+async function toggleUnviewedFilter() {
   showOnlyPending.value = false
   showOnlyUnviewed.value = true
+  await loadSubmissions(1)
 }
 
-function showAllSubmissions() {
+async function showAllSubmissions() {
   showOnlyPending.value = false
   showOnlyUnviewed.value = false
+  await loadSubmissions(1)
 }
 
-async function loadSubmissions() {
+async function goSubmissionsPage(delta) {
+  const nextPage = Math.min(Math.max(1, submissionsPage.value + delta), submissionsTotalPages.value)
+  if (nextPage !== submissionsPage.value) {
+    await loadSubmissions(nextPage)
+  }
+}
+
+async function goAvailablePage(delta) {
+  const nextPage = Math.min(Math.max(1, availablePage.value + delta), availableTotalPages.value)
+  if (nextPage !== availablePage.value) {
+    await loadAvailableStudents(nextPage)
+  }
+}
+
+async function goEnrolledPage(delta) {
+  const nextPage = Math.min(Math.max(1, enrolledPage.value + delta), enrolledTotalPages.value)
+  if (nextPage !== enrolledPage.value) {
+    await loadEnrolledStudents(nextPage)
+  }
+}
+
+function selectEnrollmentCourse(courseId) {
+  enrollmentCourseId.value = courseId
+}
+
+
+async function loadSubmissions(page = 1) {
   loading.value = true
   setError('')
   
   try {
-    // Загружаем все submissions для проверки
-    const reviewSubs = await apiJson('/submissions/review', {}, token.value)
+    const params = new URLSearchParams()
+    params.append('page', String(page))
+    params.append('page_size', String(submissionsPageSize))
+    if (selectedCourse.value) {
+      params.append('course_id', String(selectedCourse.value))
+    }
+    if (showOnlyPending.value) {
+      params.append('status', 'pending')
+    } else if (showOnlyUnviewed.value) {
+      params.append('status', 'unviewed')
+    }
+
+    const reviewSubs = await apiJson(`/submissions/review?${params.toString()}`, {}, token.value)
     
+    const items = reviewSubs?.items || []
     // Исключаем свои ответы
-    submissions.value = (reviewSubs || []).filter(
+    submissions.value = items.filter(
       s => s.user_id !== profile.value?.id
     )
+    submissionsTotal.value = reviewSubs?.total ?? submissions.value.length
+    pendingCount.value = reviewSubs?.pending_count ?? 0
+    unviewedCount.value = reviewSubs?.unviewed_count ?? 0
+    submissionsPage.value = reviewSubs?.page ?? page
     
     // Загружаем список курсов
     await loadCourses()
@@ -599,17 +707,26 @@ async function handleGradeSubmission(submission) {
   }
 }
 
-async function loadAvailableStudents() {
+async function loadAvailableStudents(page = 1) {
   if (!enrollmentCourseId.value) return
   
   loadingStudents.value = true
   try {
-    const searchParam = studentSearch.value ? `?search=${encodeURIComponent(studentSearch.value)}` : ''
-    availableStudents.value = await apiJson(
-      `/courses/${enrollmentCourseId.value}/available-students${searchParam}`,
+    const params = new URLSearchParams()
+    params.append('page', String(page))
+    params.append('page_size', String(studentsPageSize))
+    if (studentSearch.value) {
+      params.append('search', studentSearch.value)
+    }
+    const resp = await apiJson(
+      `/courses/${enrollmentCourseId.value}/available-students?${params.toString()}`,
       {},
       token.value
     )
+    const items = resp?.items ?? resp ?? []
+    availableStudents.value = items
+    availableTotal.value = resp?.total ?? items.length
+    availablePage.value = resp?.page ?? page
   } catch (e) {
     setError(e.message || 'Ошибка загрузки учеников')
   } finally {
@@ -617,16 +734,23 @@ async function loadAvailableStudents() {
   }
 }
 
-async function loadEnrolledStudents() {
+async function loadEnrolledStudents(page = 1) {
   if (!enrollmentCourseId.value) return
   
   loadingStudents.value = true
   try {
-    enrolledStudents.value = await apiJson(
-      `/courses/${enrollmentCourseId.value}/students`,
+    const params = new URLSearchParams()
+    params.append('page', String(page))
+    params.append('page_size', String(studentsPageSize))
+    const resp = await apiJson(
+      `/courses/${enrollmentCourseId.value}/students?${params.toString()}`,
       {},
       token.value
     )
+    const items = resp?.items ?? resp ?? []
+    enrolledStudents.value = items
+    enrolledTotal.value = resp?.total ?? items.length
+    enrolledPage.value = resp?.page ?? page
   } catch (e) {
     setError(e.message || 'Ошибка загрузки зачисленных учеников')
   } finally {
@@ -670,15 +794,19 @@ async function unenrollStudent(userId) {
 watch(enrollmentCourseId, async (newCourseId) => {
   if (newCourseId) {
     enrollmentTab.value = 'available'
-    await loadAvailableStudents()
-    await loadEnrolledStudents()
+    await loadAvailableStudents(1)
+    await loadEnrolledStudents(1)
   }
 })
 
 watch(enrollmentTab, async (newTab) => {
   if (newTab === 'enrolled' && enrollmentCourseId.value) {
-    await loadEnrolledStudents()
+    await loadEnrolledStudents(enrolledPage.value)
   }
+})
+
+watch(selectedCourse, async () => {
+  await loadSubmissions(1)
 })
 
 onMounted(async () => {
@@ -1067,6 +1195,81 @@ onMounted(async () => {
 
 .btn-secondary:hover {
   background: #f3f4f6;
+}
+
+.pagination {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pagination.small {
+  margin-top: 12px;
+}
+
+.page-btn {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.page-btn:hover:not(:disabled) {
+  background: #f3f4f6;
+}
+
+.page-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.page-info {
+  color: #4b5563;
+  font-weight: 600;
+}
+
+.course-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.course-chip {
+  width: 100%;
+  text-align: left;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: all 0.2s;
+}
+
+.course-chip:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.course-chip.active {
+  border-color: #2563eb;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
+  background: #eff6ff;
+}
+
+.course-title {
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.course-meta {
+  font-size: 12px;
+  color: #6b7280;
 }
 
 .modal-overlay {

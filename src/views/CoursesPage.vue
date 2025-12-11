@@ -29,11 +29,35 @@
         </div>
         <div v-else class="courses-grid">
           <CourseCard
-            v-for="course in studentCourses"
+            v-for="course in pagedStudentCourses"
             :key="'s-' + course.id"
             :course="course"
             @click="openCourse(course)"
           />
+        </div>
+        <div
+          v-if="studentTotalPages > 1"
+          class="pagination"
+        >
+          <button
+            type="button"
+            class="page-btn"
+            :disabled="studentPage <= 1"
+            @click="goStudentPage(-1)"
+          >
+            ←
+          </button>
+          <span class="page-info">
+            Страница {{ studentPage }} / {{ studentTotalPages }}
+          </span>
+          <button
+            type="button"
+            class="page-btn"
+            :disabled="studentPage >= studentTotalPages"
+            @click="goStudentPage(1)"
+          >
+            →
+          </button>
         </div>
       </section>
 
@@ -44,7 +68,7 @@
         </div>
         <div v-else class="courses-grid">
           <CourseCard
-            v-for="course in createdCourses"
+            v-for="course in pagedCreatedCourses"
             :key="'c-' + course.id"
             :course="course"
             :show-edit="true"
@@ -53,13 +77,37 @@
             @edit="editCourse(course)"
           />
         </div>
+        <div
+          v-if="createdTotalPages > 1"
+          class="pagination"
+        >
+          <button
+            type="button"
+            class="page-btn"
+            :disabled="createdPage <= 1"
+            @click="goCreatedPage(-1)"
+          >
+            ←
+          </button>
+          <span class="page-info">
+            Страница {{ createdPage }} / {{ createdTotalPages }}
+          </span>
+          <button
+            type="button"
+            class="page-btn"
+            :disabled="createdPage >= createdTotalPages"
+            @click="goCreatedPage(1)"
+          >
+            →
+          </button>
+        </div>
       </section>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, onActivated } from 'vue'
+import { computed, onMounted, onActivated, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 import { useApi } from '../composables/useApi'
@@ -70,13 +118,24 @@ const { profile, isTeacher, loadProfile, loading: authLoading } = useAuth()
 const { error, loading: apiLoading } = useApi()
 
 const loading = computed(() => authLoading.value || apiLoading.value)
+const pageSize = 8
+const studentPage = ref(1)
+const createdPage = ref(1)
 
-const studentCourses = computed(() => {
-  return (profile.value?.enrolled_courses) || []
+const studentCourses = computed(() => (profile.value?.enrolled_courses) || [])
+const createdCourses = computed(() => (profile.value?.created_courses) || [])
+
+const studentTotalPages = computed(() => Math.max(1, Math.ceil(studentCourses.value.length / pageSize)))
+const createdTotalPages = computed(() => Math.max(1, Math.ceil(createdCourses.value.length / pageSize)))
+
+const pagedStudentCourses = computed(() => {
+  const start = (studentPage.value - 1) * pageSize
+  return studentCourses.value.slice(start, start + pageSize)
 })
 
-const createdCourses = computed(() => {
-  return (profile.value?.created_courses) || []
+const pagedCreatedCourses = computed(() => {
+  const start = (createdPage.value - 1) * pageSize
+  return createdCourses.value.slice(start, start + pageSize)
 })
 
 async function openCourse(course) {
@@ -89,6 +148,14 @@ function editCourse(course) {
   router.push(`/courses/${course.id}/edit`)
 }
 
+function goStudentPage(delta) {
+  studentPage.value = Math.min(Math.max(1, studentPage.value + delta), studentTotalPages.value)
+}
+
+function goCreatedPage(delta) {
+  createdPage.value = Math.min(Math.max(1, createdPage.value + delta), createdTotalPages.value)
+}
+
 onMounted(async () => {
   await loadProfile()
 })
@@ -97,6 +164,9 @@ onMounted(async () => {
 onActivated(async () => {
   await loadProfile()
 })
+
+watch(studentCourses, () => { studentPage.value = 1 })
+watch(createdCourses, () => { createdPage.value = 1 })
 </script>
 
 <style scoped>
@@ -192,6 +262,36 @@ onActivated(async () => {
   background: #1d4ed8;
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.pagination {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.page-btn {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.page-btn:hover:not(:disabled) {
+  background: #f3f4f6;
+}
+
+.page-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.page-info {
+  color: #4b5563;
+  font-weight: 600;
 }
 </style>
 
