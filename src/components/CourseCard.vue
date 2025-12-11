@@ -109,6 +109,7 @@ const statusClass = computed(() => {
   color: #374151;
 }
 
+
 .course-card h3 {
   margin: 0 0 8px;
   font-size: 16px;

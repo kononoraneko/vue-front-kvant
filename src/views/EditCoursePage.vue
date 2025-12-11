@@ -2,9 +2,19 @@
   <div class="edit-course-page">
     <div class="page-header">
       <h2>Редактировать курс</h2>
-      <button type="button" class="btn-secondary" @click="$router.push('/courses')">
-        ← Назад к курсам
-      </button>
+  <div class="header-actions">
+    <button type="button" class="btn-secondary" @click="$router.push('/courses')">
+      ← Назад к курсам
+    </button>
+    <button
+      type="button"
+      class="btn-danger"
+      :disabled="loading"
+      @click="deleteCourse"
+    >
+      Удалить курс
+    </button>
+  </div>
     </div>
 
     <div v-if="loading" class="loading">
@@ -185,6 +195,22 @@ const form = reactive({
   status: 'draft',
   topics: []
 })
+
+async function deleteCourse() {
+  const confirmed = window.confirm('Удалить этот курс? Действие необратимо.')
+  if (!confirmed) return
+  try {
+    setError('')
+    loading.value = true
+    await apiJson(`/courses/${courseId.value}`, { method: 'DELETE' }, token.value)
+    await loadProfile()
+    router.push('/courses')
+  } catch (e) {
+    setError(e.message || 'Не удалось удалить курс')
+  } finally {
+    loading.value = false
+  }
+}
 
 const canSubmit = computed(() => {
   return form.title.trim() &&
@@ -453,6 +479,12 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 32px;
+  gap: 12px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .page-header h2 {

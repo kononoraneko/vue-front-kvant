@@ -9,6 +9,8 @@
     </div>
 
     <div v-else-if="courseContent" class="course-content">
+      <div v-if="isCreator" class="course-actions">
+      </div>
       <div class="course-body">
         <CourseTree
           :course-title="activeCourse.title"
@@ -34,57 +36,7 @@
             <template v-else>
               <!-- Режим редактирования для создателя -->
               <div v-if="isEditing && isCreator" class="edit-mode">
-                <div class="edit-header">
-                  <h3>Редактирование лекции</h3>
-                  <div class="edit-actions">
-                    <button type="button" class="btn-secondary" @click="cancelEditing">
-                      Отмена
-                    </button>
-                    <button type="button" class="btn-primary" @click="saveLecture">
-                      Сохранить
-                    </button>
-                  </div>
-                </div>
-                <div class="edit-content">
-                  <label>
-                    Название лекции
-                    <input
-                      v-model="editForm.lectureTitle"
-                      type="text"
-                      class="edit-input"
-                    >
-                  </label>
-                  <label>
-                    Содержимое (Markdown)
-                    <div class="tabs">
-                      <button
-                        type="button"
-                        :class="['tab', editForm.mode === 'markdown' && 'active']"
-                        @click="editForm.mode = 'markdown'"
-                      >
-                        Markdown
-                      </button>
-                      <button
-                        type="button"
-                        :class="['tab', editForm.mode === 'preview' && 'active']"
-                        @click="editForm.mode = 'preview'"
-                      >
-                        Предпросмотр
-                      </button>
-                    </div>
-                    <textarea
-                      v-if="editForm.mode === 'markdown'"
-                      v-model="editForm.content"
-                      rows="20"
-                      class="markdown-editor"
-                    />
-                    <div
-                      v-else
-                      class="markdown-preview"
-                      v-html="renderMarkdown(editForm.content)"
-                    />
-                  </label>
-                </div>
+                
               </div>
 
               <!-- Обычный режим просмотра -->
@@ -95,15 +47,6 @@
                       <div class="topic-badge">{{ currentTopicTitle }}</div>
                       <h3>{{ currentLectureTitle }}</h3>
                     </div>
-                    <button
-                      v-if="isCreator"
-                      type="button"
-                      class="btn-edit-icon"
-                      @click="startEditing"
-                      title="Редактировать лекцию"
-                    >
-                      ✏️
-                    </button>
                   </div>
                   <div v-html="renderMarkdown(lectureHtml)" />
                 </article>
@@ -510,59 +453,9 @@ function startEditing() {
   isEditing.value = true
 }
 
-function cancelEditing() {
-  isEditing.value = false
-  editForm.lectureTitle = ''
-  editForm.content = ''
-}
 
-async function saveLecture() {
-  if (!activeLectureKey.value || !activeTopicKey.value || !activeCourse.value) return
-  
-  loading.value = true
-  setError('')
-  
-  try {
-    const [topicKey, lectureKey] = activeLectureKey.value.split('.')
-    const topic = topics.value.find(t => t.key === topicKey)
-    if (!topic) return
-    const lecture = topic.lectures.find(l => l.key === activeLectureKey.value)
-    if (!lecture) return
-    
-    // Обновляем контент курса
-    const updatedContent = { ...courseContent.value.content }
-    
-    // Находим нужную тему и лекцию в структуре
-    if (updatedContent[topicKey] && updatedContent[topicKey].lectures) {
-      updatedContent[topicKey].lectures[lectureKey] = {
-        ...updatedContent[topicKey].lectures[lectureKey],
-        title: editForm.lectureTitle,
-        content: editForm.content
-      }
-    }
-    
-    // Отправляем обновление на сервер
-    await apiJson(`/courses/${activeCourse.value.id}`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        content: updatedContent
-      })
-    }, token.value)
-    
-    // Обновляем локальные данные
-    courseContent.value.content = updatedContent
-    lectureHtml.value = editForm.content
-    isEditing.value = false
-    
-    // Перезагружаем курс
-    await loadCourse()
-    await selectLecture(topic, lecture)
-  } catch (e) {
-    setError(e.message)
-  } finally {
-    loading.value = false
-  }
-}
+
+
 
 const currentTopicKey = computed(() => activeTopicKey.value || '')
 
@@ -875,6 +768,26 @@ watch(() => route.query.edit, async (newVal) => {
   display: flex;
   flex-direction: column;
   gap: 24px;
+}
+
+.course-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.course-actions .btn-secondary {
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: white;
+  font-weight: 600;
+  color: #1f2328;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+
+.course-actions .btn-secondary:hover {
+  background: #f3f4f6;
 }
 
 .course-body {

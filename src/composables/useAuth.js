@@ -12,7 +12,8 @@ export function useAuth() {
   const error = ref('')
 
   const isAuthenticated = computed(() => !!token.value)
-  const isTeacher = computed(() => profile.value?.role === 'Teacher')
+  const isTeacher = computed(() => ['Teacher', 'Admin'].includes(profile.value?.role))
+  const isAdmin = computed(() => profile.value?.role === 'Admin')
 
   function setError(message) {
     error.value = message || ''
@@ -113,6 +114,7 @@ export function useAuth() {
     error,
     isAuthenticated,
     isTeacher,
+    isAdmin,
     login,
     register,
     logout,

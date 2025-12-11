@@ -2,15 +2,6 @@
   <aside class="course-tree">
     <div class="tree-header">
       <h3>{{ courseTitle }}</h3>
-      <button
-        v-if="isCreator && !isEditing"
-        type="button"
-        class="btn-edit-icon"
-        @click="$emit('start-edit')"
-        title="Редактировать курс"
-      >
-        ✏️
-      </button>
     </div>
     <nav class="tree-nav">
       <div
