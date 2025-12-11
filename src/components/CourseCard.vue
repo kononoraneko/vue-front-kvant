@@ -5,8 +5,10 @@
     <div class="course-content" @click="$emit('click')">
       <h3>{{ course.title }}</h3>
       <div class="course-meta">
-        <span class="tag" :class="statusClass">{{ course.status }}</span>
-        <span v-if="course.creator_id" class="creator">ID создателя: {{ course.creator_id }}</span>
+        <span class="tag" :class="statusClass">{{ statusLabel }}</span>
+        <span v-if="course.creator_name || course.creator_id" class="creator">
+          {{ course.creator_name || `ID ${course.creator_id}` }}
+        </span>
       </div>
     </div>
     <div v-if="showEdit && isCreator" class="course-actions">
@@ -52,6 +54,14 @@ const statusClass = computed(() => {
   if (status === 'private') return 'status-private'
   if (status === 'draft') return 'status-draft'
   return ''
+})
+
+const statusLabel = computed(() => {
+  const status = props.course.status
+  if (status === 'public') return 'Публичный'
+  if (status === 'private') return 'Приватный'
+  if (status === 'draft') return 'Черновик'
+  return status || ''
 })
 </script>
 

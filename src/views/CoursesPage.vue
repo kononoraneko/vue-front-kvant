@@ -23,7 +23,7 @@
 
     <div v-else class="courses-content">
       <section class="courses-section">
-        <h3>Как ученик</h3>
+        <h3>Доступные курсы</h3>
         <div v-if="!studentCourses.length" class="empty">
           У вас пока нет доступных курсов
         </div>

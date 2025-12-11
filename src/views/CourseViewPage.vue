@@ -488,7 +488,10 @@ function loadSavedAnswers() {
 
 function renderMarkdown(text) {
   if (!text) return ''
-  return marked(text)
+  // Чистим возможные script-теги из markdown, чтобы не исполнялись в браузере
+  const sanitized = text.replace(/<script[\s\S]*?<\/script>/gi, '')
+  const escapedScript = sanitized.replace(/<script/gi, '&lt;script')
+  return marked(escapedScript)
 }
 
 async function selectLecture(topic, lecture) {

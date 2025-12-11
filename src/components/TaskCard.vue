@@ -23,7 +23,7 @@
       </button>
     </header>
     <div class="task-body">
-      <div v-html="task.html" class="task-html" />
+      <div v-html="safeTaskHtml" class="task-html" />
       
       <!-- Оценка и комментарий преподавателя -->
       <div v-if="submission?.status === 'rated'" class="teacher-feedback">
@@ -151,6 +151,17 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue', 'submit'])
+
+const safeTaskHtml = computed(() => {
+  const html = props.task && props.task.html ? String(props.task.html) : ''
+  if (!html) return ''
+  // Экранируем script-теги, чтобы браузер не исполнял их
+  const openScript = '<script'
+  const closeScript = '<' + String.fromCharCode(47) + 'script'
+  return html
+    .replace(new RegExp(openScript, 'gi'), '&lt;script')
+    .replace(new RegExp(closeScript, 'gi'), '&lt;/' + 'script')
+})
 
 const hasAnswer = computed(() => {
   if (props.task.type === 'multiple_choice') {

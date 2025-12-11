@@ -32,7 +32,7 @@ export function useApi() {
         // ignore
       }
       if (resp.status === 401) {
-        throw new Error('Сессия истекла. Войдите заново.')
+        throw new Error(detail || 'Неверный логин или пароль')
       }
       throw new Error(detail || resp.statusText)
     }

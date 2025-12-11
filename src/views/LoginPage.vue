@@ -33,7 +33,7 @@
           <input
             v-model="form.login"
             type="text"
-            placeholder="user1"
+            placeholder="логин"
             required
             autocomplete="username"
           >
