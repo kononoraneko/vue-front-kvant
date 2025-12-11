@@ -9,19 +9,19 @@
     </div>
 
     <div v-else-if="courseContent" class="course-content">
-      <div v-if="isCreator" class="course-actions">
-      </div>
       <div class="course-body">
-        <CourseTree
-          :course-title="activeCourse.title"
-          :topics="topics"
-          :active-lecture-key="activeLectureKey"
-          :is-creator="isCreator"
-          :is-editing="isEditing"
-          :completed-tasks="completedTasks"
-          @select-lecture="selectLecture"
-          @start-edit="startEditing"
-        />
+        <div class="course-side">
+          <CourseTree
+            :course-title="activeCourse.title"
+            :topics="topics"
+            :active-lecture-key="activeLectureKey"
+            :is-creator="canEditCourse"
+            :is-editing="isEditing"
+            :completed-tasks="completedTasks"
+            @select-lecture="selectLecture"
+            @start-edit="startEditing"
+          />
+        </div>
 
         <section class="lesson-panel">
           <div v-if="!activeLectureKey" class="empty-state">
@@ -35,8 +35,108 @@
 
             <template v-else>
               <!-- Режим редактирования для создателя -->
-              <div v-if="isEditing && isCreator" class="edit-mode">
-                
+              <div v-if="isEditing && canEditCourse" class="edit-mode">
+                <div class="edit-header">
+                  <h3>Редактирование лекции</h3>
+                  <div class="edit-actions">
+                    <button type="button" class="btn-secondary" @click="cancelEditing">Отмена</button>
+                    <button
+                      type="button"
+                      class="btn-primary"
+                      :disabled="savingLecture"
+                      @click="saveLecture"
+                    >
+                      {{ savingLecture ? 'Сохранение...' : 'Сохранить' }}
+                    </button>
+                  </div>
+                </div>
+
+                <div class="edit-content">
+                  <label>
+                    Заголовок лекции
+                    <input v-model="editForm.lectureTitle" class="edit-input" type="text" placeholder="Название лекции" />
+                  </label>
+
+                  <label>
+                    Контент (Markdown)
+                    <textarea
+                      v-model="editForm.content"
+                      class="markdown-editor"
+                      rows="12"
+                      placeholder="# Заголовок\nВаш текст..."
+                    />
+                  </label>
+
+                  <div class="tasks-editor">
+                    <div class="tasks-editor-header">
+                      <h4>Задачи</h4>
+                      <button type="button" class="btn-secondary" @click="addTask">+ Добавить задачу</button>
+                    </div>
+
+                    <div
+                      v-for="(task, index) in editTasks"
+                      :key="task.key || index"
+                      class="task-editor-card"
+                    >
+                      <div class="task-editor-row">
+                        <label>
+                          Ключ задачи
+                          <input v-model="task.key" class="edit-input" type="text" />
+                        </label>
+                        <label>
+                          Тип
+                          <select v-model="task.type" class="edit-input">
+                            <option value="manual">Проверка вручную</option>
+                            <option value="text_answer">Текстовый ответ</option>
+                            <option value="single_choice">Один вариант</option>
+                            <option value="multiple_choice">Несколько вариантов</option>
+                          </select>
+                        </label>
+                      </div>
+
+                      <label>
+                        Текст задачи (html/markdown)
+                        <textarea v-model="task.html" class="markdown-editor" rows="4" />
+                      </label>
+
+                      <div v-if="['single_choice','multiple_choice'].includes(task.type)" class="options-block">
+                        <label>
+                          Варианты (по одному в строке)
+                          <textarea v-model="task.optionsText" class="markdown-editor" rows="4" />
+                        </label>
+                        <label>
+                          Правильный ответ
+                          <input
+                            v-model="task.correct_answer"
+                            class="edit-input"
+                            :placeholder="task.type === 'single_choice' ? 'Индекс варианта, например 0' : 'Список индексов через запятую, напр. 0,2'"
+                            type="text"
+                          />
+                        </label>
+                      </div>
+
+                      <div v-else-if="task.type === 'text_answer'" class="options-block">
+                        <label>
+                          Правильный ответ
+                          <input v-model="task.correct_answer" class="edit-input" type="text" />
+                        </label>
+                        <label>
+                          Placeholder
+                          <input v-model="task.placeholder" class="edit-input" type="text" />
+                        </label>
+                      </div>
+
+                      <label>
+                        Описание/подсказка (опционально)
+                        <input v-model="task.description" class="edit-input" type="text" />
+                      </label>
+
+                      <div class="task-editor-actions">
+                        <button type="button" class="btn-danger" @click="removeTask(index)">Удалить задачу</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <!-- Обычный режим просмотра -->
@@ -47,6 +147,14 @@
                       <div class="topic-badge">{{ currentTopicTitle }}</div>
                       <h3>{{ currentLectureTitle }}</h3>
                     </div>
+                    <button
+                      v-if="canEditCourse"
+                      type="button"
+                      class="btn-secondary"
+                      @click="startEditing"
+                    >
+                      ✏️ Редактировать
+                    </button>
                   </div>
                   <div v-html="renderMarkdown(lectureHtml)" />
                 </article>
@@ -107,6 +215,28 @@
             </template>
           </template>
         </section>
+        <EditActionsPanel
+          v-if="canEditCourse"
+          class="edit-panel-wrapper"
+          :course-status="courseStatus"
+          :lecture-target-topic="lectureTargetTopic"
+          :topic-title-draft="topicTitleDraft"
+          :topics="topics"
+          :active-topic-key="activeTopicKey"
+          :active-lecture-key="activeLectureKey"
+          :saving-course-meta="savingCourseMeta"
+          :deleting-course="deletingCourse"
+          @update:course-status="val => courseStatus = val"
+          @update:lecture-target-topic="val => lectureTargetTopic = val"
+          @update:topic-title-draft="val => topicTitleDraft = val"
+          @save-course="saveCourseMeta"
+          @delete-course="deleteCourse"
+          @add-topic="addTopic"
+          @add-lecture="addLecture"
+          @delete-lecture="deleteLecture"
+          @delete-topic="deleteTopic"
+          @rename-topic="renameTopic"
+        />
       </div>
     </div>
   </div>
@@ -114,15 +244,17 @@
 
 <script setup>
 import { ref, computed, reactive, watch, nextTick } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 import { useApi } from '../composables/useApi'
 import { marked } from 'marked'
 import CourseTree from '../components/CourseTree.vue'
 import TaskCard from '../components/TaskCard.vue'
 import SubmissionsModal from '../components/SubmissionsModal.vue'
+import EditActionsPanel from '../components/EditActionsPanel.vue'
 
 const route = useRoute()
+const router = useRouter()
 const { token, profile, loadProfile } = useAuth()
 const { error, setError, loading, apiJson } = useApi()
 
@@ -135,11 +267,21 @@ const lectureHtml = ref('')
 const tasks = ref([])
 const lectureLoading = ref(false)
 const isEditing = ref(false)
+const savingLecture = ref(false)
+const savingCourseMeta = ref(false)
+const deletingCourse = ref(false)
 const editForm = reactive({
   lectureTitle: '',
   content: '',
   mode: 'markdown'
 })
+const editTasks = ref([])
+const editingKeys = reactive({ topicKey: null, lectureKey: null })
+const courseStatus = ref('draft')
+const lectureTargetTopic = ref('')
+const topicTitleDraft = ref('')
+const newTopicCounter = ref(1)
+const newLectureCounter = ref(1)
 
 // Submissions
 const mySubmissions = ref([])
@@ -157,6 +299,10 @@ const taskAnswers = reactive(JSON.parse(localStorage.getItem('taskAnswers') || '
 
 const isCreator = computed(() => {
   return activeCourse.value?.creator_id === profile.value?.id
+})
+const canEditCourse = computed(() => {
+  if (!profile.value) return false
+  return profile.value.role === 'Admin' || isCreator.value
 })
 
 // Преобразуем структуру курса в формат для отображения
@@ -290,6 +436,7 @@ async function loadCourse() {
   activeTopicKey.value = null
   activeLectureKey.value = null
   isEditing.value = false
+  courseStatus.value = activeCourse.value?.status || 'draft'
   
   try {
     // Убеждаемся, что профиль загружен
@@ -450,7 +597,320 @@ function startEditing() {
   // Используем content из лекции, если есть, иначе текущий lectureHtml
   editForm.content = lecture.content || lectureHtml.value || ''
   editForm.mode = 'markdown'
+  editTasks.value = (lecture.tasks || []).map((task, idx) => {
+    const clone = { ...task }
+    return {
+      key: task.key || `task${idx + 1}`,
+      html: task.html || '',
+      type: task.type || 'manual',
+      optionsText: Array.isArray(task.options) ? task.options.join('\n') : '',
+      // храним как 1-based для удобства ручного ввода на клиенте,
+      // но в сохранении переведем обратно в 0-based
+      correct_answer: convertCorrectAnswerToOneBased(clone),
+      placeholder: '',
+      description: ''
+    }
+  })
+  editingKeys.topicKey = topicKey
+  editingKeys.lectureKey = lectureKey
   isEditing.value = true
+}
+
+function cancelEditing() {
+  isEditing.value = false
+  savingLecture.value = false
+  editingKeys.topicKey = null
+  editingKeys.lectureKey = null
+}
+
+function nextTopicKey() {
+  const existing = Object.keys(courseContent.value?.content || {})
+  let idx = existing.length + newTopicCounter.value
+  let key = `Topic${idx}`
+  while (existing.includes(key)) {
+    idx += 1
+    key = `Topic${idx}`
+  }
+  newTopicCounter.value = idx + 1
+  return key
+}
+
+function nextLectureKey(topicKey) {
+  const topic = courseContent.value?.content?.[topicKey]
+  const existing = topic?.lectures ? Object.keys(topic.lectures) : []
+  let idx = existing.length + newLectureCounter.value
+  let key = `Lecture${idx}`
+  while (existing.includes(key)) {
+    idx += 1
+    key = `Lecture${idx}`
+  }
+  newLectureCounter.value = idx + 1
+  return key
+}
+
+async function saveContent(updatedContent, keepSelection = false) {
+  if (!canEditCourse.value || !activeCourse.value?.id) return
+  setError('')
+  await apiJson(
+    `/courses/${activeCourse.value.id}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({
+        title: activeCourse.value.title,
+        status: courseStatus.value,
+        content: updatedContent
+      })
+    },
+    token.value
+  )
+  courseContent.value = { ...courseContent.value, content: updatedContent }
+  if (!keepSelection) {
+    activeTopicKey.value = null
+    activeLectureKey.value = null
+  }
+}
+
+async function addTopic() {
+  if (!canEditCourse.value || !courseContent.value?.content) return
+  const key = nextTopicKey()
+  const title = `Новая тема ${key.replace('Topic', '')}`
+  const updated = JSON.parse(JSON.stringify(courseContent.value.content))
+  updated[key] = { title, lectures: {} }
+  await saveContent(updated, true)
+  lectureTargetTopic.value = key
+  topicTitleDraft.value = title
+}
+
+async function addLecture() {
+  if (!canEditCourse.value || !courseContent.value?.content) return
+  const targetKey = lectureTargetTopic.value || activeTopicKey.value || Object.keys(courseContent.value.content)[0]
+  if (!targetKey) return
+  const topic = courseContent.value.content[targetKey]
+  if (!topic) return
+  const lkey = nextLectureKey(targetKey)
+  const ltitle = `Новая лекция ${lkey.replace('Lecture', '')}`
+  const updated = JSON.parse(JSON.stringify(courseContent.value.content))
+  if (!updated[targetKey].lectures) {
+    updated[targetKey].lectures = {}
+  }
+  updated[targetKey].lectures[lkey] = { title: ltitle, content: '', tasks: {} }
+  await saveContent(updated, true)
+  // выбрать новую лекцию
+  lectureTargetTopic.value = targetKey
+  const newTopicTitle = courseContent.value.content[targetKey]?.title || ''
+  topicTitleDraft.value = newTopicTitle
+  activeTopicKey.value = targetKey
+  const topicObj = topics.value.find(t => t.key === targetKey)
+  if (topicObj) {
+    const lectureObj = topicObj.lectures.find(l => l.key === `${targetKey}.${lkey}`)
+    if (lectureObj) {
+      await selectLecture(topicObj, lectureObj)
+      startEditing()
+    }
+  }
+}
+
+async function deleteLecture() {
+  if (!canEditCourse.value || !activeLectureKey.value || !activeTopicKey.value) return
+  if (!window.confirm('Удалить выбранную лекцию и её задачи?')) return
+  const updated = JSON.parse(JSON.stringify(courseContent.value.content))
+  const topic = updated[activeTopicKey.value]
+  if (!topic?.lectures || !topic.lectures[activeLectureKey.value.split('.')[1]]) return
+  delete topic.lectures[activeLectureKey.value.split('.')[1]]
+  await saveContent(updated)
+  isEditing.value = false
+  lectureHtml.value = ''
+  tasks.value = []
+}
+
+async function deleteTopic() {
+  const targetKey = lectureTargetTopic.value || activeTopicKey.value
+  if (!canEditCourse.value || !targetKey) return
+  if (!window.confirm('Удалить тему и все её лекции?')) return
+  const updated = JSON.parse(JSON.stringify(courseContent.value.content))
+  delete updated[targetKey]
+  await saveContent(updated)
+  isEditing.value = false
+  lectureHtml.value = ''
+  tasks.value = []
+  lectureTargetTopic.value = Object.keys(updated)[0] || ''
+  topicTitleDraft.value = lectureTargetTopic.value
+}
+
+async function renameTopic() {
+  if (!canEditCourse.value || !lectureTargetTopic.value || !topicTitleDraft.value || !courseContent.value?.content) return
+  const updated = JSON.parse(JSON.stringify(courseContent.value.content))
+  if (!updated[lectureTargetTopic.value]) return
+  updated[lectureTargetTopic.value].title = topicTitleDraft.value
+  await saveContent(updated, true)
+}
+
+function addTask() {
+  editTasks.value.push({
+    key: `task${editTasks.value.length + 1}`,
+    html: '',
+    type: 'manual',
+    optionsText: '',
+    correct_answer: '',
+    placeholder: '',
+    description: ''
+  })
+}
+
+function removeTask(index) {
+  editTasks.value.splice(index, 1)
+}
+
+function normalizeTasksForSave() {
+  const tasksObj = {}
+  editTasks.value.forEach((task, idx) => {
+    const taskKey = (task.key || `task${idx + 1}`).trim()
+    const base = {
+      html: task.html || '',
+      type: task.type || 'manual'
+    }
+
+    if (task.optionsText && ['single_choice', 'multiple_choice'].includes(base.type)) {
+      base.options = task.optionsText.split('\n').map(o => o.trim()).filter(Boolean)
+    }
+
+    if (base.type === 'single_choice') {
+      // сохраняем обратно в 0-based
+      base.correct_answer = Math.max(0, Number(task.correct_answer ?? 1) - 1)
+    } else if (base.type === 'multiple_choice') {
+      const numbers = String(task.correct_answer || '')
+        .split(',')
+        .map(v => v.trim())
+        .filter(Boolean)
+        .map(v => Number(v) - 1) // 1-based -> 0-based
+        .filter(v => !Number.isNaN(v) && v >= 0)
+      base.correct_answer = numbers
+    } else if (base.type === 'text_answer') {
+      base.correct_answer = task.correct_answer ?? ''
+    }
+
+    tasksObj[taskKey] = base
+  })
+  return tasksObj
+}
+
+function convertCorrectAnswerToOneBased(task) {
+  if (!task) return ''
+  if (task.type === 'single_choice') {
+    const val = task.correct_answer
+    if (val === undefined || val === null) return ''
+    const num = Number(val)
+    return Number.isNaN(num) ? '' : String(num + 1)
+  }
+  if (task.type === 'multiple_choice') {
+    const val = task.correct_answer
+    if (!val) return ''
+    try {
+      const arr = Array.isArray(val) ? val : JSON.parse(val)
+      if (!Array.isArray(arr)) return ''
+      return arr.map(v => Number(v) + 1).filter(v => !Number.isNaN(v)).join(',')
+    } catch {
+      return ''
+    }
+  }
+  // текст/ручные — отдаём как есть
+  return task.correct_answer ?? ''
+}
+
+async function saveLecture() {
+  if (!canEditCourse.value || !editingKeys.topicKey || !editingKeys.lectureKey || !activeCourse.value?.id) return
+  savingLecture.value = true
+  setError('')
+  try {
+    const updatedContent = JSON.parse(JSON.stringify(courseContent.value.content))
+    const topic = updatedContent[editingKeys.topicKey]
+    if (!topic || !topic.lectures || !topic.lectures[editingKeys.lectureKey]) {
+      throw new Error('Не удалось найти лекцию для сохранения')
+    }
+    const tasksObj = normalizeTasksForSave()
+
+    topic.lectures[editingKeys.lectureKey] = {
+      ...topic.lectures[editingKeys.lectureKey],
+      title: editForm.lectureTitle || topic.lectures[editingKeys.lectureKey].title,
+      content: editForm.content || '',
+      tasks: tasksObj
+    }
+
+    await apiJson(
+      `/courses/${activeCourse.value.id}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({
+          title: activeCourse.value.title,
+          status: courseStatus.value || activeCourse.value.status,
+          content: updatedContent
+        })
+      },
+      token.value
+    )
+
+    // Обновляем локально
+    courseContent.value = {
+      ...courseContent.value,
+      content: updatedContent
+    }
+    // Сбрасываем кэш для текущей лекции
+    lectureCache[editingKeys.lectureKey] = {
+      html: editForm.content,
+      tasks: Object.entries(tasksObj).map(([key, val]) => ({ key, ...val }))
+    }
+    lectureHtml.value = editForm.content
+    tasks.value = lectureCache[editingKeys.lectureKey].tasks
+    isEditing.value = false
+  } catch (e) {
+    setError(e.message || 'Не удалось сохранить лекцию')
+  } finally {
+    savingLecture.value = false
+  }
+}
+
+async function saveCourseMeta() {
+  if (!canEditCourse.value || !activeCourse.value?.id) return
+  savingCourseMeta.value = true
+  setError('')
+  try {
+    await apiJson(
+      `/courses/${activeCourse.value.id}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({
+          title: activeCourse.value.title,
+          status: courseStatus.value,
+          content: courseContent.value?.content || {}
+        })
+      },
+      token.value
+    )
+    activeCourse.value = { ...activeCourse.value, status: courseStatus.value }
+  } catch (e) {
+    setError(e.message || 'Не удалось сохранить курс')
+  } finally {
+    savingCourseMeta.value = false
+  }
+}
+
+async function deleteCourse() {
+  if (!canEditCourse.value || !activeCourse.value?.id) return
+  if (!window.confirm('Удалить курс без возможности восстановления?')) return
+  deletingCourse.value = true
+  setError('')
+  try {
+    await apiJson(
+      `/courses/${activeCourse.value.id}`,
+      { method: 'DELETE' },
+      token.value
+    )
+    router.push('/courses')
+  } catch (e) {
+    setError(e.message || 'Не удалось удалить курс')
+  } finally {
+    deletingCourse.value = false
+  }
 }
 
 
@@ -494,7 +954,7 @@ async function loadSubmissions() {
     
     // Загружаем свои submissions постранично (берем текущую лекцию)
     const mySubsResp = await apiJson(
-      `/submissions/mine?course_id=${activeCourse.value.id}&lecture_key=${lectureKey}&page_size=200`,
+      `/submissions/mine?course_id=${activeCourse.value.id}&lecture_key=${lectureKey}&page_size=100`,
       {},
       token.value
     )
@@ -505,9 +965,9 @@ async function loadSubmissions() {
     )
     
     // Загружаем submissions для проверки (если преподаватель)
-    if (isCreator.value) {
+    if (canEditCourse.value) {
       const reviewResp = await apiJson(
-        `/submissions/review?course_id=${activeCourse.value.id}&lecture_key=${lectureKey}&page_size=200`,
+        `/submissions/review?course_id=${activeCourse.value.id}&lecture_key=${lectureKey}&page_size=100`,
         {},
         token.value
       )
@@ -724,7 +1184,7 @@ function setupAutoNext() {
 watch(() => route.params.id, loadCourse, { immediate: true })
 watch(() => route.query.edit, async (newVal) => {
   // Если параметр edit изменился на 'true' и курс уже загружен
-  if (newVal === 'true' && courseContent.value && isCreator.value && topics.value.length > 0 && !isEditing.value) {
+  if (newVal === 'true' && courseContent.value && canEditCourse.value && topics.value.length > 0 && !isEditing.value) {
     await nextTick()
     const firstTopic = topics.value[0]
     if (firstTopic.lectures.length > 0) {
@@ -772,7 +1232,58 @@ watch(() => route.query.edit, async (newVal) => {
 
 .course-actions {
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #f9fafb;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.course-actions-main {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.course-meta {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.inline-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-weight: 600;
+  color: #1f2328;
+}
+
+.inline-field.compact span {
+  font-weight: 500;
+  color: #4b5563;
+}
+
+.input.select {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  font-size: 14px;
+  min-width: 150px;
+}
+
+.course-actions-buttons {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .course-actions .btn-secondary {
@@ -790,17 +1301,123 @@ watch(() => route.query.edit, async (newVal) => {
   background: #f3f4f6;
 }
 
+.course-actions .ghost {
+  background: transparent;
+}
+
+.tree-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.tree-actions .btn-secondary,
+.tree-actions .btn-danger {
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.tree-actions-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.structure-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.structure-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pill-btn {
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #1f2937;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pill-btn:hover:not(:disabled) {
+  background: #f3f4f6;
+}
+
+.pill-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pill-btn.danger {
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.pill-btn.danger:hover:not(:disabled) {
+  background: #fef2f2;
+}
+
+.btn-danger {
+  padding: 10px 16px;
+  border-radius: 6px;
+  border: 1px solid #dc2626;
+  background: #ef4444;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #dc2626;
+  border-color: #dc2626;
+}
+
+.btn-danger.ghost {
+  background: #fff8f8;
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
+
+.btn-danger.ghost:hover:not(:disabled) {
+  background: #fee2e2;
+}
+
 .course-body {
   display: grid;
-  grid-template-columns: 340px minmax(0, 1fr);
-  gap: 24px;
+  grid-template-columns: 320px minmax(0, 1fr) 280px;
+  gap: 20px;
+}
+
+.course-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: sticky;
+  top: 24px;
+  align-self: start;
 }
 
 .lesson-panel {
-  background: white;
-  border-radius: 8px;
-  padding: 24px;
+  background: #f8fafc;
+  border-radius: 12px;
+  padding: 20px;
   border: 1px solid #e5e7eb;
+  box-shadow: inset 0 1px 0 #f1f5f9;
 }
 
 .empty-state {
@@ -811,12 +1428,12 @@ watch(() => route.query.edit, async (newVal) => {
 
 .lesson-loading {
   text-align: center;
-  padding: 48px;
+  padding: 40px;
   color: #6b7280;
 }
 
 .lesson-text {
-  margin-bottom: 32px;
+  margin-bottom: 28px;
 }
 
 .lesson-header {
@@ -839,9 +1456,9 @@ watch(() => route.query.edit, async (newVal) => {
 
 .lesson-header h3 {
   margin: 0;
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 700;
-  color: #1f2328;
+  color: #0f172a;
 }
 
 .btn-edit-icon {
@@ -911,6 +1528,45 @@ watch(() => route.query.edit, async (newVal) => {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+.tasks-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tasks-editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.task-editor-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #f9fafb;
+}
+
+.task-editor-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.task-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.options-block {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
 }
 
 .edit-content label {
@@ -1084,9 +1740,21 @@ button:disabled {
   font-size: 13px;
 }
 
-@media (max-width: 1000px) {
+@media (max-width: 1100px) {
   .course-body {
     grid-template-columns: 1fr;
+  }
+
+  .edit-panel-wrapper {
+    order: 3;
+  }
+
+  .course-side {
+    order: 1;
+  }
+
+  .lesson-panel {
+    order: 2;
   }
 }
 </style>

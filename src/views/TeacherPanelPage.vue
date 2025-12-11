@@ -35,59 +35,57 @@
     </div>
 
     <div v-else class="panel-content">
+      <div class="filters">
+        <div class="filter-buttons">
+          <button
+            type="button"
+            :class="['filter-btn', showOnlyPending && 'active']"
+            @click="togglePendingFilter"
+          >
+            ⚠️ Требуют проверки ({{ pendingCount }})
+          </button>
+          <button
+            type="button"
+            :class="['filter-btn', showOnlyUnviewed && 'active']"
+            @click="toggleUnviewedFilter"
+          >
+            👁️ Не просмотренные ({{ unviewedCount }})
+          </button>
+          <button
+            type="button"
+            :class="['filter-btn', (!showOnlyPending && !showOnlyUnviewed) && 'active']"
+            @click="showAllSubmissions"
+          >
+            📋 Все ответы
+          </button>
+        </div>
+        <div class="filter-selects">
+          <select v-model="selectedCourse" class="filter-select">
+            <option :value="null">Все курсы</option>
+            <option
+              v-for="course in myCourses"
+              :key="course.id"
+              :value="course.id"
+            >
+              {{ course.title }}
+            </option>
+          </select>
+          <button
+            type="button"
+            class="btn-secondary"
+            @click="loadSubmissions(submissionsPage.value)"
+          >
+            🔄 Обновить
+          </button>
+        </div>
+      </div>
+
       <div v-if="submissions.length === 0" class="empty-state">
-        <p>Нет отправленных решений для проверки</p>
+        <p>Нет отправленных решений для выбранного фильтра</p>
+        <button type="button" class="btn-secondary" @click="showAllSubmissions">Сбросить фильтры</button>
       </div>
 
       <div v-else class="submissions-container">
-        <!-- Фильтры -->
-        <div class="filters">
-        <div class="filters">
-          <div class="filter-buttons">
-            <button
-              type="button"
-              :class="['filter-btn', showOnlyPending && 'active']"
-              @click="togglePendingFilter"
-            >
-              ⚠️ Требуют проверки ({{ pendingCount }})
-            </button>
-            <button
-              type="button"
-              :class="['filter-btn', showOnlyUnviewed && 'active']"
-              @click="toggleUnviewedFilter"
-            >
-              👁️ Не просмотренные ({{ unviewedCount }})
-            </button>
-            <button
-              type="button"
-              :class="['filter-btn', (!showOnlyPending && !showOnlyUnviewed) && 'active']"
-              @click="showAllSubmissions"
-            >
-              📋 Все ответы
-            </button>
-          </div>
-          <div class="filter-selects">
-            <select v-model="selectedCourse" class="filter-select">
-              <option :value="null">Все курсы</option>
-              <option
-                v-for="course in myCourses"
-                :key="course.id"
-                :value="course.id"
-              >
-                {{ course.title }}
-              </option>
-            </select>
-            <button
-              type="button"
-              class="btn-secondary"
-              @click="loadSubmissions(submissionsPage.value)"
-            >
-              🔄 Обновить
-            </button>
-          </div>
-        </div>
-        </div>
-
         <!-- Таблица решений -->
         <div class="submissions-table-wrapper">
           <table class="submissions-table">
