@@ -24,6 +24,25 @@
         </div>
 
         <section class="lesson-panel">
+          <div v-if="progress" class="progress-bar">
+            <div class="progress-top">
+              <div class="progress-title">Прогресс по курсу</div>
+              <div class="progress-value">{{ progress.completion_rate }}%</div>
+            </div>
+            <div class="progress-track">
+              <div
+                class="progress-fill"
+                :style="{ width: `${progress.completion_rate || 0}%` }"
+              ></div>
+            </div>
+            <div class="progress-stats">
+              <span>Задачи: {{ progress.answered }} / {{ progress.total_tasks }}</span>
+              <span>Оценено: {{ progress.rated }}</span>
+              <span>В ожидании: {{ progress.pending_manual }}</span>
+              <span v-if="progress.avg_grade !== null">Средняя: {{ progress.avg_grade }}/5</span>
+            </div>
+          </div>
+
           <div v-if="!activeLectureKey" class="empty-state">
             <p>Выберите лекцию из списка слева</p>
           </div>
@@ -290,6 +309,7 @@ const submissionsLoading = ref(false)
 const userNames = ref({}) // Кэш имен пользователей
 const showSubmissionsModal = ref(false)
 const submittingTask = ref(false)
+const progress = ref(null)
 
 const lectureCache = reactive({})
 
@@ -452,6 +472,7 @@ async function loadCourse() {
     
     // Ждем обновления computed свойств
     await nextTick()
+    await loadProgress()
     
     // Если есть параметр edit=true в URL и пользователь создатель, открываем первую лекцию в режиме редактирования
     if (route.query.edit === 'true') {
@@ -993,6 +1014,21 @@ async function loadSubmissions() {
   }
 }
 
+async function loadProgress() {
+  if (!activeCourse.value?.id) return
+  try {
+    const resp = await apiJson(
+      `/submissions/progress?course_id=${activeCourse.value.id}`,
+      {},
+      token.value
+    )
+    progress.value = resp
+  } catch (e) {
+    // не блокируем отображение
+    console.warn('Ошибка загрузки прогресса', e)
+  }
+}
+
 function getSubmissionForTask(taskKey) {
   if (!activeTopicKey.value || !activeLectureKey.value) return null
   const [topicKey, lectureKey] = activeLectureKey.value.split('.')
@@ -1421,6 +1457,56 @@ watch(() => route.query.edit, async (newVal) => {
   padding: 20px;
   border: 1px solid #e5e7eb;
   box-shadow: inset 0 1px 0 #f1f5f9;
+}
+
+.progress-bar {
+  margin-bottom: 16px;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.progress-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.progress-title {
+  font-weight: 700;
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.progress-value {
+  font-weight: 700;
+  color: #2563eb;
+}
+
+.progress-track {
+  width: 100%;
+  height: 8px;
+  background: #e5e7eb;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #2563eb, #22c55e);
+  border-radius: 999px;
+}
+
+.progress-stats {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: #475569;
 }
 
 .empty-state {

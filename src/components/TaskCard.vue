@@ -120,6 +120,14 @@
           <span>Решение проверено и оценено</span>
         </div>
       </div>
+
+      <div
+        v-if="submission && task.explanation"
+        class="explanation"
+      >
+        <div class="explanation-title">Пояснение</div>
+        <div v-html="task.explanation" class="explanation-text"></div>
+      </div>
     </div>
   </article>
 </template>
@@ -446,6 +454,27 @@ function openInCodepen() {
 
 .complete-icon {
   font-size: 20px;
+}
+
+.explanation {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+}
+
+.explanation-title {
+  font-weight: 700;
+  font-size: 13px;
+  color: #1f2937;
+  margin-bottom: 6px;
+}
+
+.explanation-text {
+  font-size: 13px;
+  color: #4b5563;
+  line-height: 1.6;
 }
 
 .answer-label {

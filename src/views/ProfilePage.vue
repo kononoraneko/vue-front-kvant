@@ -3,7 +3,6 @@
     <div class="page-header">
       <div>
         <h2>Профиль</h2>
-        <p class="subtitle">Управление данными и ролью</p>
       </div>
     </div>
 

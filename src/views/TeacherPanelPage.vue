@@ -531,8 +531,16 @@ function formatAnswer(submission) {
   if (!taskInfo) {
     // Если нет информации о задаче, показываем как есть
     if (isJsonAnswer(submission.answer)) {
-      const indices = parseJsonAnswer(submission.answer)
-      return indices.map(i => `Вариант ${i + 1}`).join(', ')
+      const parsed = parseJsonAnswer(submission.answer)
+      if (Array.isArray(parsed)) {
+        return parsed.map(i => `Вариант ${Number(i) + 1}`).join(', ')
+      }
+      if (typeof parsed === 'number') {
+        return `Вариант ${parsed + 1}`
+      }
+      if (parsed && typeof parsed === 'object') {
+        return JSON.stringify(parsed)
+      }
     }
     return submission.answer
   }
